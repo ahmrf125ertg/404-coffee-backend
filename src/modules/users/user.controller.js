@@ -1,218 +1,114 @@
 /**
- * controllers/user.controller.js
- *
- * Employees / Users Controller
- *
- * Features:
- * - Get all users with permissions
- * - Create user with permissions
- * - Update user
- * - Activate / Suspend user
- * - Get user permissions
- * - Update user permissions
- * - Delete user
+ * modules/users/user.controller.js
+ * ================================
+ * Users Controller (RBAC)
+ * - Users CRUD مع الدور (role) بدل الصلاحيات التفصيلية
+ * - حمايات مالكية: مينفعش تحذف/تعلق آخر Owner، ومينفعش تعدل دورك لنفسك
  */
 
 const bcrypt = require("bcryptjs");
-const { logAudit } = require("../../utils/audit");
 
 const prisma = require("../../lib/prisma");
-
+const { logAudit } = require("../../utils/audit");
+const { parsePagination } = require("../../utils/pagination");
 const {
-  getUserPermissionsForResponse,
-} = require("./permission.service");
+  isValidRole,
+  getExpandedPermissions,
+} = require("../../config/roles.config");
 
-/**
- * =========================================================
- * GET ALL USERS
- * =========================================================
- *
- * GET /api/users
- *
- * Returns:
- * - User information
- * - Pages available for the user
- * - Actions available for each page
- */
+const USER_SELECT = {
+  id: true,
+  name: true,
+  position: true,
+  role: true,
+  status: true,
+  createdAt: true,
+  updatedAt: true,
+};
+
+const getOwnerCount = () =>
+  prisma.user.count({ where: { role: "OWNER" } });
+
+const isOwner = (req) => req.user?.role === "OWNER";
+
+const requireOwnerOr = (req, res, next) => {
+  if (!isOwner(req)) {
+    const error = new Error("Only the Owner can perform this action");
+    error.statusCode = 403;
+    throw error;
+  }
+};
+
+// =========================================================
+// GET ALL USERS
+// =========================================================
 const getUsers = async (req, res, next) => {
   try {
-    const users = await prisma.user.findMany({
-      select: {
-        id: true,
-        name: true,
-        position: true,
-        status: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-    });
+    const { page, pageSize, skip, take } = parsePagination(req.query);
 
-    const usersWithPermissions = await Promise.all(
-      users.map(async (user) => {
-        const permissions =
-          await getUserPermissionsForResponse(user.id);
-
-        return {
-          ...user,
-          permissions,
-        };
-      })
-    );
+    const [users, total] = await Promise.all([
+      prisma.user.findMany({
+        select: USER_SELECT,
+        orderBy: { createdAt: "desc" },
+        skip,
+        take,
+      }),
+      prisma.user.count(),
+    ]);
 
     res.status(200).json({
       success: true,
-      data: usersWithPermissions,
+      data: users,
+      pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) },
     });
   } catch (error) {
     next(error);
   }
 };
 
-/**
- * =========================================================
- * CREATE USER
- * =========================================================
- *
- * POST /api/users
- *
- * Body example:
- *
- * {
- *   "name": "Mohamed",
- *   "password": "123456",
- *   "position": "CASHIER",
- *   "permissions": [
- *     {
- *       "page": "sales",
- *       "actions": [
- *         "view_products",
- *         "create_invoice"
- *       ]
- *     },
- *     {
- *       "page": "products",
- *       "actions": [
- *         "view_products"
- *       ]
- *     }
- *   ]
- * }
- */
+// =========================================================
+// CREATE USER
+// =========================================================
 const createUser = async (req, res, next) => {
   try {
-    const {
-      name,
-      password,
-      position,
-      permissions = [],
-    } = req.body;
+    const { name, password, position, role = "CASHIER" } = req.body;
 
-    // Validate required data
     if (!name || !password || !position) {
-      const error = new Error(
-        "Name, password and position are required"
-      );
-
+      const error = new Error("Name, password and position are required");
       error.statusCode = 400;
       throw error;
     }
 
-    // Validate permissions
-    if (!Array.isArray(permissions)) {
-      const error = new Error(
-        "permissions must be an array"
-      );
-
+    if (!isValidRole(role)) {
+      const error = new Error(`Invalid role. Valid roles: OWNER, MANAGER, CASHIER, DELEGATE`);
       error.statusCode = 400;
       throw error;
     }
 
-    // Validate every permission
-    for (const permission of permissions) {
-      if (!permission.page) {
-        const error = new Error(
-          "Each permission must contain page"
-        );
-
-        error.statusCode = 400;
-        throw error;
-      }
-
-      if (
-        permission.actions !== undefined &&
-        !Array.isArray(permission.actions)
-      ) {
-        const error = new Error(
-          "permission actions must be an array"
-        );
-
-        error.statusCode = 400;
-        throw error;
-      }
+    if (role === "OWNER" && !isOwner(req)) {
+      const error = new Error("Only the Owner can create an OWNER account");
+      error.statusCode = 403;
+      throw error;
     }
 
-    // Check if user already exists
-    const existingUser = await prisma.user.findFirst({
-      where: {
-        name,
-      },
-    });
+    const existingUser = await prisma.user.findFirst({ where: { name } });
 
     if (existingUser) {
       const error = new Error("User already exists");
-
       error.statusCode = 409;
       throw error;
     }
 
-    // Hash password
     const passwordHash = await bcrypt.hash(password, 10);
 
-    // Create user + permissions
     const user = await prisma.user.create({
-      data: {
-        name,
-        passwordHash,
-        position,
-        status: "ACTIVE",
-
-        // Create page permissions
-        pagePermissions: {
-          create: permissions.map((permission) => ({
-            page: permission.page,
-            enabled: true,
-          })),
-        },
-
-        // Create action permissions
-        actionPermissions: {
-          create: permissions.flatMap((permission) =>
-            (permission.actions || []).map((action) => ({
-              page: permission.page,
-              action,
-              enabled: true,
-            }))
-          ),
-        },
-      },
-
-      select: {
-        id: true,
-        name: true,
-        position: true,
-        status: true,
-        createdAt: true,
-        updatedAt: true,
-      },
+      data: { name, passwordHash, position, role },
+      select: USER_SELECT,
     });
 
-    
-        // Record in audit log
-        await logAudit(req, "users", "create_user", `Created user ${user.name}`);
-        res.status(201).json({
+    await logAudit(req, "users", "create_user", `Created user ${user.name} (${role})`);
+
+    res.status(201).json({
       success: true,
       message: "User created successfully",
       data: user,
@@ -222,53 +118,28 @@ const createUser = async (req, res, next) => {
   }
 };
 
-/**
- * =========================================================
- * UPDATE USER
- * =========================================================
- *
- * PUT /api/users/:id
- *
- * Can update:
- * - name
- * - position
- * - password
- *
- * Partial update is supported.
- */
+// =========================================================
+// UPDATE USER
+// =========================================================
 const updateUser = async (req, res, next) => {
   try {
     const userId = Number(req.params.id);
+    const { name, password, position, role } = req.body;
 
-    const {
-      name,
-      password,
-      position,
-    } = req.body;
-
-    // Validate ID
-    if (!Number.isInteger(userId)) {
+    if (!Number.isInteger(userId) || userId <= 0) {
       const error = new Error("Invalid user ID");
-
       error.statusCode = 400;
       throw error;
     }
 
-    // Check if user exists
-    const existingUser = await prisma.user.findUnique({
-      where: {
-        id: userId,
-      },
-    });
+    const existingUser = await prisma.user.findUnique({ where: { id: userId } });
 
     if (!existingUser) {
       const error = new Error("User not found");
-
       error.statusCode = 404;
       throw error;
     }
 
-    // Prepare update data
     const updateData = {};
 
     if (name !== undefined) {
@@ -278,14 +149,8 @@ const updateUser = async (req, res, next) => {
         throw error;
       }
 
-      // Prevent ambiguous login: names must stay unique
       const duplicate = await prisma.user.findFirst({
-        where: {
-          name,
-          NOT: {
-            id: userId,
-          },
-        },
+        where: { name, NOT: { id: userId } },
       });
 
       if (duplicate) {
@@ -301,35 +166,48 @@ const updateUser = async (req, res, next) => {
       updateData.position = position;
     }
 
-    // Update password only if provided
-    if (
-      password !== undefined &&
-      password !== ""
-    ) {
-      updateData.passwordHash =
-        await bcrypt.hash(password, 10);
+    if (password !== undefined && password !== "") {
+      updateData.passwordHash = await bcrypt.hash(password, 10);
     }
 
-    // Update user
+    if (role !== undefined) {
+      if (!isValidRole(role)) {
+        const error = new Error(`Invalid role. Valid roles: OWNER, MANAGER, CASHIER, DELEGATE`);
+        error.statusCode = 400;
+        throw error;
+      }
+
+      // ممنوع تغيير دورك بنفسك
+      if (req.user.userId === userId) {
+        const error = new Error("You cannot change your own role");
+        error.statusCode = 400;
+        throw error;
+      }
+
+      // تغيير دور Owner (حتى من Owner) محتاج صلاحية OWNER
+      if (existingUser.role === "OWNER" || role === "OWNER") {
+        requireOwnerOr(req, res, next);
+
+        // مينفعش النسخ الإداري آخر Owner
+        if (existingUser.role === "OWNER" && (await getOwnerCount()) <= 1) {
+          const error = new Error("Cannot demote the last Owner");
+          error.statusCode = 400;
+          throw error;
+        }
+      }
+
+      updateData.role = role;
+    }
+
     const user = await prisma.user.update({
-      where: {
-        id: userId,
-      },
+      where: { id: userId },
       data: updateData,
-      select: {
-        id: true,
-        name: true,
-        position: true,
-        status: true,
-        createdAt: true,
-        updatedAt: true,
-      },
+      select: USER_SELECT,
     });
 
-    
-        // Record in audit log
-        await logAudit(req, "users", "edit_user", `Updated user #${req.params.id}`);
-        res.status(200).json({
+    await logAudit(req, "users", "edit_user", `Updated user #${req.params.id}`);
+
+    res.status(200).json({
       success: true,
       message: "User updated successfully",
       data: user,
@@ -339,82 +217,59 @@ const updateUser = async (req, res, next) => {
   }
 };
 
-/**
- * =========================================================
- * UPDATE USER STATUS
- * =========================================================
- *
- * PATCH /api/users/:id/status
- *
- * Body:
- *
- * {
- *   "status": "ACTIVE"
- * }
- *
- * OR
- *
- * {
- *   "status": "SUSPENDED"
- * }
- */
+// =========================================================
+// UPDATE USER STATUS
+// =========================================================
 const updateUserStatus = async (req, res, next) => {
   try {
     const userId = Number(req.params.id);
-
     const { status } = req.body;
 
-    // Validate ID
-    if (!Number.isInteger(userId)) {
+    if (!Number.isInteger(userId) || userId <= 0) {
       const error = new Error("Invalid user ID");
-
       error.statusCode = 400;
       throw error;
     }
 
-    // Validate status
-    if (
-      !["ACTIVE", "SUSPENDED"].includes(status)
-    ) {
-      const error = new Error(
-        "Status must be ACTIVE or SUSPENDED"
-      );
-
+    if (!["ACTIVE", "SUSPENDED"].includes(status)) {
+      const error = new Error("Status must be ACTIVE or SUSPENDED");
       error.statusCode = 400;
       throw error;
     }
 
-    // Check user
-    const existingUser = await prisma.user.findUnique({
-      where: {
-        id: userId,
-      },
-    });
+    if (req.user.userId === userId) {
+      const error = new Error("You cannot change your own status");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const existingUser = await prisma.user.findUnique({ where: { id: userId } });
 
     if (!existingUser) {
       const error = new Error("User not found");
-
       error.statusCode = 404;
       throw error;
     }
 
-    // Update status
+    if (existingUser.role === "OWNER" && !isOwner(req)) {
+      const error = new Error("Only the Owner can change an OWNER account status");
+      error.statusCode = 403;
+      throw error;
+    }
+
+    if (existingUser.role === "OWNER" && status === "SUSPENDED" && (await getOwnerCount()) <= 1) {
+      const error = new Error("Cannot suspend the last Owner");
+      error.statusCode = 400;
+      throw error;
+    }
+
     const user = await prisma.user.update({
-      where: {
-        id: userId,
-      },
-      data: {
-        status,
-      },
-      select: {
-        id: true,
-        name: true,
-        position: true,
-        status: true,
-        createdAt: true,
-        updatedAt: true,
-      },
+      where: { id: userId },
+      data: { status },
+      select: USER_SELECT,
     });
+
+    await logAudit(req, "users", "change_user_status", `Changed user #${req.params.id} status to ${status}`);
 
     res.status(200).json({
       success: true,
@@ -426,305 +281,35 @@ const updateUserStatus = async (req, res, next) => {
   }
 };
 
-/**
- * =========================================================
- * GET USER PERMISSIONS
- * =========================================================
- *
- * GET /api/users/:id/permissions
- */
+// =========================================================
+// GET USER EFFECTIVE PERMISSIONS (من الـ RBAC config)
+// =========================================================
 const getUserPermissions = async (req, res, next) => {
   try {
     const userId = Number(req.params.id);
 
-    // Validate ID
-    if (!Number.isInteger(userId)) {
+    if (!Number.isInteger(userId) || userId <= 0) {
       const error = new Error("Invalid user ID");
-
       error.statusCode = 400;
       throw error;
     }
 
-    // Get user
     const user = await prisma.user.findUnique({
-      where: {
-        id: userId,
-      },
-      select: {
-        id: true,
-        name: true,
-        position: true,
-        status: true,
-      },
+      where: { id: userId },
+      select: USER_SELECT,
     });
 
     if (!user) {
       const error = new Error("User not found");
-
       error.statusCode = 404;
       throw error;
     }
-
-    // Get page permissions
-    const pagePermissions =
-      await prisma.userPagePermission.findMany({
-        where: {
-          userId,
-        },
-        select: {
-          id: true,
-          page: true,
-          enabled: true,
-        },
-        orderBy: {
-          page: "asc",
-        },
-      });
-
-    // Get action permissions
-    const actionPermissions =
-      await prisma.userActionPermission.findMany({
-        where: {
-          userId,
-        },
-        select: {
-          id: true,
-          page: true,
-          action: true,
-          enabled: true,
-        },
-        orderBy: [
-          {
-            page: "asc",
-          },
-          {
-            action: "asc",
-          },
-        ],
-      });
-
-    
-        // Record in audit log
-        await logAudit(req, "users", "change_user_status", `Changed user #${req.params.id} status to ${status}`);
-        res.status(200).json({
-      success: true,
-      data: {
-        user,
-        pagePermissions,
-        actionPermissions,
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * =========================================================
- * UPDATE USER PERMISSIONS
- * =========================================================
- *
- * PUT /api/users/:id/permissions
- *
- * Body:
- *
- * {
- *   "pagePermissions": [
- *     {
- *       "page": "sales",
- *       "enabled": true
- *     }
- *   ],
- *
- *   "actionPermissions": [
- *     {
- *       "page": "sales",
- *       "action": "create_invoice",
- *       "enabled": true
- *     }
- *   ]
- * }
- */
-const updateUserPermissions = async (req, res, next) => {
-  try {
-    const userId = Number(req.params.id);
-
-    const {
-      pagePermissions = [],
-      actionPermissions = [],
-    } = req.body;
-
-    // Validate ID
-    if (!Number.isInteger(userId)) {
-      const error = new Error("Invalid user ID");
-
-      error.statusCode = 400;
-      throw error;
-    }
-
-    // Check user
-    const user = await prisma.user.findUnique({
-      where: {
-        id: userId,
-      },
-      select: {
-        id: true,
-        name: true,
-        position: true,
-        status: true,
-      },
-    });
-
-    if (!user) {
-      const error = new Error("User not found");
-
-      error.statusCode = 404;
-      throw error;
-    }
-
-    // Validate arrays
-    if (
-      !Array.isArray(pagePermissions) ||
-      !Array.isArray(actionPermissions)
-    ) {
-      const error = new Error(
-        "pagePermissions and actionPermissions must be arrays"
-      );
-
-      error.statusCode = 400;
-      throw error;
-    }
-
-    // Validate page permissions
-    for (const permission of pagePermissions) {
-      if (
-        !permission.page ||
-        typeof permission.enabled !== "boolean"
-      ) {
-        const error = new Error(
-          "Each page permission must contain page and boolean enabled"
-        );
-
-        error.statusCode = 400;
-        throw error;
-      }
-    }
-
-    // Validate action permissions
-    for (const permission of actionPermissions) {
-      if (
-        !permission.page ||
-        !permission.action ||
-        typeof permission.enabled !== "boolean"
-      ) {
-        const error = new Error(
-          "Each action permission must contain page, action and boolean enabled"
-        );
-
-        error.statusCode = 400;
-        throw error;
-      }
-    }
-
-    // Update page permissions
-    for (const permission of pagePermissions) {
-      await prisma.userPagePermission.upsert({
-        where: {
-          userId_page: {
-            userId,
-            page: permission.page,
-          },
-        },
-
-        update: {
-          enabled: permission.enabled,
-        },
-
-        create: {
-          userId,
-          page: permission.page,
-          enabled: permission.enabled,
-        },
-      });
-    }
-
-    // Update action permissions
-    for (const permission of actionPermissions) {
-      await prisma.userActionPermission.upsert({
-        where: {
-          userId_page_action: {
-            userId,
-            page: permission.page,
-            action: permission.action,
-          },
-        },
-
-        update: {
-          enabled: permission.enabled,
-        },
-
-        create: {
-          userId,
-          page: permission.page,
-          action: permission.action,
-          enabled: permission.enabled,
-        },
-      });
-    }
-
-    // Get updated page permissions
-    const updatedPagePermissions =
-      await prisma.userPagePermission.findMany({
-        where: {
-          userId,
-        },
-        select: {
-          id: true,
-          page: true,
-          enabled: true,
-        },
-        orderBy: {
-          page: "asc",
-        },
-      });
-
-    // Get updated action permissions
-    const updatedActionPermissions =
-      await prisma.userActionPermission.findMany({
-        where: {
-          userId,
-        },
-        select: {
-          id: true,
-          page: true,
-          action: true,
-          enabled: true,
-        },
-        orderBy: [
-          {
-            page: "asc",
-          },
-          {
-            action: "asc",
-          },
-        ],
-      });
-
-    // Record in audit log
-    await logAudit(
-      req,
-      "users",
-      "manage_permissions",
-      `Updated permissions for user #${req.params.id}`
-    );
 
     res.status(200).json({
       success: true,
-      message: "User permissions updated successfully",
       data: {
         user,
-        pagePermissions: updatedPagePermissions,
-        actionPermissions: updatedActionPermissions,
+        permissions: getExpandedPermissions(user.role),
       },
     });
   } catch (error) {
@@ -732,66 +317,55 @@ const updateUserPermissions = async (req, res, next) => {
   }
 };
 
-/**
- * =========================================================
- * DELETE USER
- * =========================================================
- *
- * DELETE /api/users/:id
- */
+// =========================================================
+// DELETE USER
+// =========================================================
 const deleteUser = async (req, res, next) => {
   try {
     const userId = Number(req.params.id);
 
-    // Validate ID
-    if (!Number.isInteger(userId)) {
+    if (!Number.isInteger(userId) || userId <= 0) {
       const error = new Error("Invalid user ID");
-
       error.statusCode = 400;
       throw error;
     }
 
-    // Prevent deleting yourself
-    if (req.user && req.user.userId === userId) {
-      const error = new Error(
-        "You cannot delete your own account"
-      );
-
+    if (req.user.userId === userId) {
+      const error = new Error("You cannot delete your own account");
       error.statusCode = 400;
       throw error;
     }
 
-    // Check user
     const user = await prisma.user.findUnique({
-      where: {
-        id: userId,
-      },
-      select: {
-        id: true,
-        name: true,
-        position: true,
-        status: true,
-      },
+      where: { id: userId },
+      select: { id: true, name: true, role: true },
     });
 
     if (!user) {
       const error = new Error("User not found");
-
       error.statusCode = 404;
       throw error;
     }
 
-    // Delete user
-    await prisma.user.delete({
-      where: {
-        id: userId,
-      },
-    });
+    if (user.role === "OWNER") {
+      if (!isOwner(req)) {
+        const error = new Error("Only the Owner can delete an OWNER account");
+        error.statusCode = 403;
+        throw error;
+      }
 
-    
-        // Record in audit log
-        await logAudit(req, "users", "delete_user", `Deleted user #${req.params.id}`);
-        res.status(200).json({
+      if ((await getOwnerCount()) <= 1) {
+        const error = new Error("Cannot delete the last Owner");
+        error.statusCode = 400;
+        throw error;
+      }
+    }
+
+    await prisma.user.delete({ where: { id: userId } });
+
+    await logAudit(req, "users", "delete_user", `Deleted user #${req.params.id}`);
+
+    res.status(200).json({
       success: true,
       message: "User deleted successfully",
       data: user,
@@ -801,18 +375,11 @@ const deleteUser = async (req, res, next) => {
   }
 };
 
-/**
- * =========================================================
- * EXPORTS
- * =========================================================
- */
-
 module.exports = {
   getUsers,
   createUser,
   updateUser,
   updateUserStatus,
   getUserPermissions,
-  updateUserPermissions,
   deleteUser,
 };

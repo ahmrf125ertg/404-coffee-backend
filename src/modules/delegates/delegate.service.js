@@ -1,21 +1,28 @@
 const prisma = require("../../lib/prisma");
+const { parsePagination } = require("../../utils/pagination");
 
 // Get all delegates
-const getDelegates = async () => {
-    const delegates = await prisma.delegate.findMany({
-        orderBy: {
-            createdAt: "desc",
-        },
-        include: {
-            _count: {
-                select: {
-                    orders: true,
+const getDelegates = async (reqQuery = {}) => {
+    const { skip, take } = parsePagination(reqQuery);
+
+    const [items, total] = await Promise.all([
+        prisma.delegate.findMany({
+            orderBy: {
+                createdAt: "desc",
+            },
+            include: {
+                _count: {
+                    select: {
+                        orders: true,
+                    },
                 },
             },
-        },
-    });
-
-    return delegates;
+            skip,
+            take,
+        }),
+        prisma.delegate.count(),
+    ]);
+    return { items, total };
 };
 
 

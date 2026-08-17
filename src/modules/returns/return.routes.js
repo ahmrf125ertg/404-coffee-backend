@@ -1,101 +1,69 @@
 const express = require("express");
 
-const router = express.Router();
-
 const authMiddleware = require("../../middlewares/auth.middleware");
-
-const {
-    requirePagePermission,
-    requireActionPermission,
-} = require("../../middlewares/permission.middleware");
+const { requirePermission } = require("../../middlewares/permission.middleware");
 
 const controller = require("./return.controller");
 const { validateReturn } = require("./return.validation");
 
-// ============================================================
+const router = express.Router();
+
 // Get all returns
-// ============================================================
-
 router.get(
-    "/",
-    authMiddleware,
-    requirePagePermission("returns"),
-    requireActionPermission("returns", "view_returns"),
-    controller.getReturns
+  "/",
+  authMiddleware,
+  requirePermission("returns", "view_returns"),
+  controller.getReturns
 );
 
-// ============================================================
 // Create return
-// ============================================================
-
 router.post(
-    "/",
-    authMiddleware,
-    requirePagePermission("returns"),
-    requireActionPermission("returns", "create_return"),
-    validateReturn,
-    controller.createReturn
+  "/",
+  authMiddleware,
+  requirePermission("returns", "create_return"),
+  validateReturn,
+  controller.createReturn
 );
 
-// ============================================================
 // Approve return
-// ============================================================
-
 router.patch(
-    "/:id/approve",
-    authMiddleware,
-    requirePagePermission("returns"),
-    requireActionPermission("returns", "approve_return"),
-    controller.approveReturn
+  "/:id/approve",
+  authMiddleware,
+  requirePermission("returns", "approve_return"),
+  controller.approveReturn
 );
 
-// ============================================================
 // Cancel return
-// ============================================================
-
 router.patch(
-    "/:id/cancel",
-    authMiddleware,
-    requirePagePermission("returns"),
-    requireActionPermission("returns", "cancel_return"),
-    controller.cancelReturn
+  "/:id/cancel",
+  authMiddleware,
+  requirePermission("returns", "cancel_return"),
+  controller.cancelReturn
 );
 
-// ============================================================
 // Get return by ID
-// ============================================================
-
 router.get(
-    "/:id",
-    authMiddleware,
-    requirePagePermission("returns"),
-    requireActionPermission("returns", "view_returns"),
-    controller.getReturnById
+  "/:id",
+  authMiddleware,
+  requirePermission("returns", "view_returns"),
+  controller.getReturnById
 );
 
-// ============================================================
 // Update return
-// ============================================================
-
 router.put(
-    "/:id",
-    authMiddleware,
-    requirePagePermission("returns"),
-    requireActionPermission("returns", "edit_return"),
-    validateReturn,
-    controller.updateReturn
+  "/:id",
+  authMiddleware,
+  requirePermission("returns", "edit_return"),
+  validateReturn,
+  controller.updateReturn
 );
 
-// ============================================================
 // Delete return
-// ============================================================
-
 router.delete(
-    "/:id",
-    authMiddleware,
-    requirePagePermission("returns"),
-    requireActionPermission("returns", "delete_return"),
-    controller.deleteReturn
+  "/:id",
+  authMiddleware,
+  requirePermission("returns", "delete_return"),
+  controller.deleteReturn
 );
 
 module.exports = router;

@@ -1,16 +1,27 @@
 const cashDrawerShiftService = require("./cash-drawer-shift.service");
 
+const { parsePagination } = require("../../utils/pagination");
+
 // ============================================================
 // Get all shifts
 // ============================================================
 
 const getShifts = async (req, res, next) => {
     try {
-        const shifts = await cashDrawerShiftService.getShifts();
+        const { items, total } =
+            await cashDrawerShiftService.getShifts(req.query);
+
+        const { page, pageSize } = parsePagination(req.query);
 
         res.status(200).json({
             success: true,
-            data: shifts,
+            data: items,
+            pagination: {
+                page,
+                pageSize,
+                total,
+                totalPages: Math.ceil(total / pageSize),
+            },
         });
     } catch (error) {
         next(error);

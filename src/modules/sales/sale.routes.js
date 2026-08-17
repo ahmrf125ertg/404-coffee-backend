@@ -1,86 +1,55 @@
 const express = require("express");
 
 const authMiddleware = require("../../middlewares/auth.middleware");
+const { requirePermission } = require("../../middlewares/permission.middleware");
 
 const {
-    requirePagePermission,
-    requireActionPermission,
-} = require("../../middlewares/permission.middleware");
-
-const {
-    validateSale,
-} = require("./sale.validation");
-
-const {
-    getSales,
-    getSaleById,
-    createSale,
-    updateSale,
-    deleteSale,
+  getSales,
+  getSaleById,
+  createSale,
+  updateSale,
+  deleteSale,
 } = require("./sale.controller");
+
+const { validateSale } = require("./sale.validation");
 
 const router = express.Router();
 
-// ============================================================
-// Get all sales
-// ============================================================
-
 router.get(
-    "/",
-    authMiddleware,
-    requirePagePermission("sales"),
-    requireActionPermission("sales", "view_sales_history"),
-    getSales
+  "/",
+  authMiddleware,
+  requirePermission("sales", "view_sales_history"),
+  getSales
 );
 
-// ============================================================
-// Get sale by ID
-// ============================================================
-
 router.get(
-    "/:id",
-    authMiddleware,
-    requirePagePermission("sales"),
-    requireActionPermission("sales", "view_sales_history"),
-    getSaleById
+  "/:id",
+  authMiddleware,
+  requirePermission("sales", "view_sales_history"),
+  getSaleById
 );
-
-// ============================================================
-// Create sale
-// ============================================================
 
 router.post(
-    "/",
-    authMiddleware,
-    requirePagePermission("sales"),
-    requireActionPermission("sales", "create_invoice"),
-    validateSale,
-    createSale
+  "/",
+  authMiddleware,
+  requirePermission("sales", "create_invoice"),
+  validateSale,
+  createSale
 );
-
-// ============================================================
-// Update sale
-// ============================================================
 
 router.put(
-    "/:id",
-    authMiddleware,
-    requirePagePermission("sales"),
-    requireActionPermission("sales", "edit_invoice"),
-    validateSale,
-    updateSale
+  "/:id",
+  authMiddleware,
+  requirePermission("sales", "edit_invoice"),
+  validateSale,
+  updateSale
 );
 
-// ============================================================
-// Delete sale
-// ============================================================
-
 router.delete(
-    "/:id",
-    authMiddleware,
-    requirePagePermission("sales"),
-    requireActionPermission("sales", "cancel_invoice"),
-    deleteSale
+  "/:id",
+  authMiddleware,
+  requirePermission("sales", "cancel_invoice"),
+  deleteSale
 );
 
 module.exports = router;

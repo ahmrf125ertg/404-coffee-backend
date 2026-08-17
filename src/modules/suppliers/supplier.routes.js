@@ -1,65 +1,51 @@
 const express = require("express");
 
 const authMiddleware = require("../../middlewares/auth.middleware");
+const { requirePermission } = require("../../middlewares/permission.middleware");
 
 const {
-    requirePagePermission,
-} = require("../../middlewares/permission.middleware");
-
-const {
-    getSuppliers,
-    getSupplierById,
-    createSupplier,
-    updateSupplier,
-    deleteSupplier,
+  getSuppliers,
+  getSupplierById,
+  createSupplier,
+  updateSupplier,
+  deleteSupplier,
 } = require("./supplier.controller");
 
 const router = express.Router();
 
-
-// Get all suppliers
 router.get(
-    "/",
-    authMiddleware,
-    requirePagePermission("suppliers"),
-    getSuppliers,
+  "/",
+  authMiddleware,
+  requirePermission("suppliers", "view_suppliers"),
+  getSuppliers
 );
 
-
-// Get supplier by ID
 router.get(
-    "/:id",
-    authMiddleware,
-    requirePagePermission("suppliers"),
-    getSupplierById,
+  "/:id",
+  authMiddleware,
+  requirePermission("suppliers", "view_suppliers"),
+  getSupplierById
 );
 
-
-// Create supplier
 router.post(
-    "/",
-    authMiddleware,
-    requirePagePermission("suppliers"),
-    createSupplier,
+  "/",
+  authMiddleware,
+  requirePermission("suppliers", "create_supplier"),
+  createSupplier
 );
 
-
-// Update supplier
 router.put(
-    "/:id",
-    authMiddleware,
-    requirePagePermission("suppliers"),
-    updateSupplier,
+  "/:id",
+  authMiddleware,
+  requirePermission("suppliers", "edit_supplier"),
+  updateSupplier
 );
 
-
-// Delete supplier
 router.delete(
-    "/:id",
-    authMiddleware,
-    requirePagePermission("suppliers"),
-    deleteSupplier,
+  "/:id",
+  authMiddleware,
+  requirePermission("suppliers", "delete_supplier"),
+  deleteSupplier
 );
-
 
 module.exports = router;

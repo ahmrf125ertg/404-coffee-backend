@@ -1,5 +1,6 @@
 const returnService = require("./return.service");
 const { logAudit } = require("../../utils/audit");
+const { parsePagination } = require("../../utils/pagination");
 
 
 // ============================================================
@@ -30,12 +31,19 @@ const createReturn = async (req, res, next) => {
 
 const getReturns = async (req, res, next) => {
     try {
-        const result =
+        const { items, total } =
             await returnService.getReturns(req.query);
+        const { page, pageSize } = parsePagination(req.query);
 
         return res.status(200).json({
             success: true,
-            data: result,
+            data: items,
+            pagination: {
+                page,
+                pageSize,
+                total,
+                totalPages: Math.ceil(total / pageSize),
+            },
         });
     } catch (error) {
         next(error);

@@ -1,77 +1,67 @@
 const express = require("express");
 
 const authMiddleware = require("../../middlewares/auth.middleware");
+const { requirePermission } = require("../../middlewares/permission.middleware");
 
 const {
-    requirePagePermission,
-} = require("../../middlewares/permission.middleware");
-
-const {
-    getPurchases,
-    getPurchaseById,
-    createPurchase,
-    updatePurchase,
-    approvePurchase,
-    cancelPurchase,
-    deletePurchase,
+  getPurchases,
+  getPurchaseById,
+  createPurchase,
+  updatePurchase,
+  approvePurchase,
+  cancelPurchase,
+  deletePurchase,
 } = require("./purchase.controller");
 
 const router = express.Router();
 
-// Get all purchases
 router.get(
-    "/",
-    authMiddleware,
-    requirePagePermission("purchases"),
-    getPurchases
+  "/",
+  authMiddleware,
+  requirePermission("purchases", "view_purchases"),
+  getPurchases
 );
 
-// Get purchase by ID
 router.get(
-    "/:id",
-    authMiddleware,
-    requirePagePermission("purchases"),
-    getPurchaseById
+  "/:id",
+  authMiddleware,
+  requirePermission("purchases", "view_purchases"),
+  getPurchaseById
 );
 
-// Create purchase
 router.post(
-    "/",
-    authMiddleware,
-    requirePagePermission("purchases"),
-    createPurchase
+  "/",
+  authMiddleware,
+  requirePermission("purchases", "create_purchase"),
+  createPurchase
 );
 
-// Update purchase
 router.put(
-    "/:id",
-    authMiddleware,
-    requirePagePermission("purchases"),
-    updatePurchase
+  "/:id",
+  authMiddleware,
+  requirePermission("purchases", "edit_purchase"),
+  updatePurchase
 );
 
-// Approve purchase
 router.patch(
-    "/:id/approve",
-    authMiddleware,
-    requirePagePermission("purchases"),
-    approvePurchase
+  "/:id/approve",
+  authMiddleware,
+  requirePermission("purchases", "approve_purchase"),
+  approvePurchase
 );
 
-// Cancel purchase
 router.patch(
-    "/:id/cancel",
-    authMiddleware,
-    requirePagePermission("purchases"),
-    cancelPurchase
+  "/:id/cancel",
+  authMiddleware,
+  requirePermission("purchases", "cancel_purchase"),
+  cancelPurchase
 );
 
-// Delete purchase
 router.delete(
-    "/:id",
-    authMiddleware,
-    requirePagePermission("purchases"),
-    deletePurchase
+  "/:id",
+  authMiddleware,
+  requirePermission("purchases", "delete_purchase"),
+  deletePurchase
 );
 
 module.exports = router;

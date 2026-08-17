@@ -1,59 +1,81 @@
+/**
+ * app.js — تجميع الـ Express app
+ * الطلب: security → logging → parsing → routes → error handler
+ */
+
 const express = require("express");
 const cors = require("cors");
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
+const { pinoHttp } = require("pino-http");
 
-const userRoutes = require("./modules/users/user.routes");
-
-const authRoutes = require("./modules/auth/auth.routes");
-
-const returnRoutes = require("./modules/returns/return.routes");
-
-
-const rawMaterialRoutes = require("./modules/raw-materials/raw-material.routes");
-
-const permissionRoutes = require("./modules/users/permission.routes");
-
-const supplierRoutes = require("./modules/suppliers/supplier.routes");
-
-
-const productRoutes = require("./modules/products/product.routes");
-
-
-const saleRoutes = require("./modules/sales/sale.routes");
-const purchaseRoutes = require("./modules/purchases/purchase.routes");
-const customerRoutes = require("./modules/customers/customer.routes");
-
-const delegateRoutes = require("./modules/delegates/delegate.routes");
-
-const orderRoutes = require("./modules/orders/order.routes");
-
-const cashDrawerShiftRoutes = require("./modules/cash-drawer-shifts/cash-drawer-shift.routes");
-
-const auditLogRoutes = require("./modules/audit-logs/audit-log.routes");
-
-const settingRoutes = require("./modules/settings/setting.routes");
-
-const warningRoutes = require("./modules/warnings/warning.routes");
-
-const financialReportRoutes = require("./modules/financial-reports/financial-report.routes");
-
-const dashboardRoutes = require("./modules/dashboard/dashboard.routes");
-
-const chatRoutes = require("./modules/chat/chat.routes");
-
-
+const logger = require("./lib/logger");
+const { nodeEnv } = require("./config/env");
 
 const errorHandler = require("./middlewares/error.middleware");
 
+const authRoutes = require("./modules/auth/auth.routes");
+const auditLogRoutes = require("./modules/audit-logs/audit-log.routes");
+const backupRoutes = require("./modules/backup/backup.routes");
+const cashDrawerShiftRoutes = require("./modules/cash-drawer-shifts/cash-drawer-shift.routes");
+const chatRoutes = require("./modules/chat/chat.routes");
+const customerRoutes = require("./modules/customers/customer.routes");
+const dashboardRoutes = require("./modules/dashboard/dashboard.routes");
+const delegateRoutes = require("./modules/delegates/delegate.routes");
+const financialReportRoutes = require("./modules/financial-reports/financial-report.routes");
+const orderRoutes = require("./modules/orders/order.routes");
+const productRoutes = require("./modules/products/product.routes");
+const purchaseRoutes = require("./modules/purchases/purchase.routes");
+const rawMaterialRoutes = require("./modules/raw-materials/raw-material.routes");
+const returnRoutes = require("./modules/returns/return.routes");
+const saleRoutes = require("./modules/sales/sale.routes");
+const settingRoutes = require("./modules/settings/setting.routes");
+const supplierRoutes = require("./modules/suppliers/supplier.routes");
+const userRoutes = require("./modules/users/user.routes");
+const warningRoutes = require("./modules/warnings/warning.routes");
+
+const { swaggerUi, swaggerSpec } = require("./docs/swagger");
 
 const app = express();
 
-// middleware
+// ============================================================
+// Security
+// ============================================================
+app.use(helmet());
 app.use(cors());
+
+// Rate limiting عام — حدود سخية (النظام شبه مغلق)، بيتعطل في الـ tests
+app.use(
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 600,
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip: () => nodeEnv === "test",
+  })
+);
+
+// ============================================================
+// Logging
+// ============================================================
+app.use(
+  pinoHttp({
+    logger,
+    autoLogging: {
+      ignore: (req) => req.url === "/api/health",
+    },
+  })
+);
+
+// ============================================================
+// Parsing
+// ============================================================
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-
-// test route
+// ============================================================
+// Health
+// ============================================================
 app.get("/api/health", (req, res) => {
   res.status(200).json({
     success: true,
@@ -61,54 +83,41 @@ app.get("/api/health", (req, res) => {
   });
 });
 
+// ============================================================
+// API Docs (Swagger)
+// ============================================================
+app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+app.get("/api/docs.json", (req, res) => {
+  res.setHeader("Content-Type", "application/json");
+  res.send(swaggerSpec);
+});
 
+// ============================================================
 // Routes
-app.use("/api/users", userRoutes);
+// ============================================================
 app.use("/api/auth", authRoutes);
-
-
-
-app.use("/api/sales", saleRoutes);
-app.use("/api/purchases", purchaseRoutes);
-app.use("/api/customers", customerRoutes);
-
-app.use("/api/raw-materials", rawMaterialRoutes);
-
-
-app.use("/api/suppliers", supplierRoutes);
-app.use("/api/products", productRoutes);
-
-
-app.use("/api/returns", returnRoutes);
-
-app.use("/api/delegates", delegateRoutes);
-
-// Permission routes
-app.use("/api/permissions", permissionRoutes);
-
-app.use("/api/orders", orderRoutes);
-
-app.use("/api/cash-drawer-shifts", cashDrawerShiftRoutes);
-
 app.use("/api/audit-logs", auditLogRoutes);
-
+app.use("/api/backup", backupRoutes);
+app.use("/api/cash-drawer-shifts", cashDrawerShiftRoutes);
+app.use("/api/chat", chatRoutes);
+app.use("/api/customers", customerRoutes);
+app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/delegates", delegateRoutes);
+app.use("/api/financial-reports", financialReportRoutes);
+app.use("/api/orders", orderRoutes);
+app.use("/api/products", productRoutes);
+app.use("/api/purchases", purchaseRoutes);
+app.use("/api/raw-materials", rawMaterialRoutes);
+app.use("/api/returns", returnRoutes);
+app.use("/api/sales", saleRoutes);
 app.use("/api/settings", settingRoutes);
-
+app.use("/api/suppliers", supplierRoutes);
+app.use("/api/users", userRoutes);
 app.use("/api/warnings", warningRoutes);
 
-app.use("/api/financial-reports", financialReportRoutes);
-
-app.use("/api/dashboard", dashboardRoutes);
-
-app.use("/api/chat", chatRoutes);
-
-
-
-
-
-
-
-// Error handler must be after routes
+// ============================================================
+// Error handler (must be last)
+// ============================================================
 app.use(errorHandler);
 
 module.exports = app;

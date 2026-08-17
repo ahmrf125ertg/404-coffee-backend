@@ -2,6 +2,8 @@ const orderService = require("./order.service");
 
 const { logAudit } = require("../../utils/audit");
 
+const { parsePagination } = require("../../utils/pagination");
+
 // ============================================================
 // Create order
 // POST /api/orders
@@ -30,11 +32,19 @@ const createOrder = async (req, res, next) => {
 
 const getOrders = async (req, res, next) => {
     try {
-        const orders = await orderService.getOrders(req.query);
+        const { items, total } = await orderService.getOrders(req.query);
+
+        const { page, pageSize } = parsePagination(req.query);
 
         return res.status(200).json({
             success: true,
-            data: orders,
+            data: items,
+            pagination: {
+                page,
+                pageSize,
+                total,
+                totalPages: Math.ceil(total / pageSize),
+            },
         });
     } catch (error) {
         next(error);

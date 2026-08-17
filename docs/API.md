@@ -1,15 +1,33 @@
-# 404 Coffee Backend — API Reference
+# 404 Coffee Backend — API Reference (v2.0)
 
-توثيق **فعلي** لكل الـ endpoints الموجودة في الكود (تم جردها من ملفات الـ routes مباشرة).
+> آخر تحديث: 16 أغسطس 2026 — **v2.0**: SQLite WAL + RBAC + Pagination + Backup + Swagger
+
+## معلومات أساسية
 
 - Base URL: `http://localhost:5000`
-- كل الـ endpoints (عدا `login` و `health`) تتطلب هيدر:
+- كل الـ endpoints (عدا `POST /api/auth/login` و `GET /api/health`) تتطلب:
   ```
   Authorization: Bearer <JWT>
   ```
-- نظام الصلاحيات: `authMiddleware` ثم `requirePagePermission(page)` ثم `requireActionPermission(page, action)`.
-- الاستجابة الخطأ القياسية: `{ success: false, message: "..." }`.
-- جدول ملخص في نهاية الملف.
+- **نظام الصلاحيات (RBAC)` — كل مستخدم له `role` من 4 أدوار:
+
+  | الدور | الصلاحيات |
+  |---|---|
+  | `OWNER` | كل حاجة + النسخ الاحتياطي + إدارة كل المستخدمين |
+  | `MANAGER` | كل حاجة ما عدا: حذف موظف، تعديل الإعدادات، النسخ الاحتياطي |
+  | `CASHIER` | المبيعات، العملاء، الطلبات، الوردية/الدرج، عرض المخزون/المنتجات/الموردين/المندوبين |
+  | `DELEGATE` | الطلبات (عرض/تعديل)، المبيعات (عرض)، التنبيهات |
+
+- الصلاحيات الفعلية لأي مستخدم (قائمة أفعال ملموسة): `GET /api/users/:id/permissions`
+- **Pagination**: كل قوائم الـ list بتقبل `page` (افتراضي 1) و `pageSize` (افتراضي 20، أقصى 100) وترجع:
+  ```json
+  { "success": true, "data": [...], "pagination": { "page": 1, "pageSize": 20, "total": 5, "totalPages": 1 } }
+  ```
+- **النسخ الاحتياطي**: `GET /api/backup/download` (OWNER فقط) — ملف SQLite متسق.
+- **التوثيق التفاعلي (Swagger UI)**: `GET /api/docs` (JSON خام: `/api/docs.json`).
+- **Rate limiting** (حدود سخية — النظام شبه مغلق): عام 600/15 دقيقة لكل IP، login 60/15 دقيقة، chat 30/15 دقيقة.
+- الاستجابة الخطأ القياسية: `{ "success": false, "message": "..." }` — في الـ production تفاصيل الأخطاء 500 مخفية.
+- قاعدة البيانات: **SQLite WAL** (`prisma/dev.db`) — backup = ملف واحد متسق.
 
 ---
 
@@ -20,12 +38,12 @@
 
 Body:
 ```json
-{ "email": "admin@404coffee.com", "password": "..." }
+{ "name": "Admin", "password": "root123" }
 ```
 
 Response:
 ```json
-{ "success": true, "token": "<JWT>", "user": { ... } }
+{ "success": true, "message": "Login successful", "data": { "token": "<JWT>", "user": { "id": 1, "name": "Admin", "position": "OWNER", "role": "OWNER", "status": "ACTIVE" } } }
 ```
 
 ---
@@ -34,21 +52,12 @@ Response:
 
 | Method | Endpoint | Action | ملاحظات |
 |---|---|---|---|
-| GET | `/api/users` | `view_users` | قائمة المستخدمين مع صلاحياتهم |
-| POST | `/api/users` | `create_user` | إنشاء مستخدم |
-| PUT | `/api/users/:id` | `edit_user` | تعديل مستخدم |
-| PATCH | `/api/users/:id/status` | `change_user_status` | تفعيل/تعطيل |
-| DELETE | `/api/users/:id` | `delete_user` | حذف |
-| GET | `/api/users/:id/permissions` | `manage_permissions` | جلب صلاحيات مستخدم |
-| PUT | `/api/users/:id/permissions` | `manage_permissions` | تحديث صلاحيات مستخدم |
-
----
-
-## Permissions — `/api/permissions`
-
-| Method | Endpoint | Auth | ملاحظات |
-|---|---|---|---|
-| GET | `/api/permissions/users/:id` | auth فقط | ✓ تم الإصلاح — يرجع صلاحيات المستخدم الكاملة |
+| GET | `/api/users` | `view_users` | قائمة + pagination |
+| POST | `/api/users` | `create_user` | body: `{ name, password, position, role }` — OWNER فقط يعمل OWNER |
+| PUT | `/api/users/:id` | `edit_user` | ممنوع تغيير دورك لنفسك، وممنوع إنقاص آخر OWNER |
+| PATCH | `/api/users/:id/status` | `change_user_status` | `{ status: "ACTIVE" | "SUSPENDED" }` |
+| GET | `/api/users/:id/permissions` | `view_users` | صلاحيات الدور الفعلية من الـ RBAC config |
+| DELETE | `/api/users/:id` | `delete_user` | ممنوع حذف نفسك أو آخر OWNER |
 
 ---
 
@@ -56,116 +65,84 @@ Response:
 
 | Method | Endpoint | Action |
 |---|---|---|
-| GET | `/api/sales` | `view_sales_history` |
+| GET | `/api/sales` | `view_sales_history` — فلترة `search` (اسم/هاتف)، `status`، `paymentMethod` + pagination |
 | GET | `/api/sales/:id` | `view_sales_history` |
-| POST | `/api/sales` | `create_invoice` |
+| POST | `/api/sales` | `create_invoice` — body: `{ customerId?, discount?, paymentMethod?, status?, items: [{ productId, productSizeId, quantity }] }` — يخصم من المخزون تلقائيًا |
 | PUT | `/api/sales/:id` | `edit_invoice` |
-| DELETE | `/api/sales/:id` | `cancel_invoice` |
+| DELETE | `/api/sales/:id` | `cancel_invoice` — soft-cancel (status → CANCELLED) + إرجاع المخزون |
 
 ---
 
 ## Purchases — `/api/purchases`
 
-| Method | Endpoint | ملاحظات |
-|---|---|---|
-| GET | `/api/purchases` | صفحة `purchases` (أُضيفت للـ seed) |
-| GET | `/api/purchases/:id` | نفس الصفحة |
-| POST | `/api/purchases` | نفس الصفحة |
-| PUT | `/api/purchases/:id` | نفس الصفحة |
-| PATCH | `/api/purchases/:id/approve` | نفس الصفحة |
-| PATCH | `/api/purchases/:id/cancel` | نفس الصفحة |
-| DELETE | `/api/purchases/:id` | نفس الصفحة |
+| Method | Endpoint | Action | ملاحظات |
+|---|---|---|---|
+| GET | `/api/purchases` | `view_purchases` | paginated |
+| GET | `/api/purchases/:id` | `view_purchases` | |
+| POST | `/api/purchases` | `create_purchase` | body: `{ invoiceNo, supplierId, invoiceDate, discount?, items: [...] }` — تنشأ `DRAFT` |
+| PUT | `/api/purchases/:id` | `edit_purchase` | |
+| PATCH | `/api/purchases/:id/approve` | `approve_purchase` | DRAFT → APPROVED + يضيف دفعات للمخزون |
+| PATCH | `/api/purchases/:id/cancel` | `cancel_purchase` | DRAFT فقط → CANCELLED |
+| DELETE | `/api/purchases/:id` | `delete_purchase` | DRAFT أو CANCELLED فقط |
 
 ---
 
-## Customers — `/api/customers`
+## Customers / Suppliers / Delegates
 
-| Method | Endpoint | ملاحظات |
+| Module | CRUD | ملاحظات |
 |---|---|---|
-| GET | `/api/customers` | صفحة `customers` |
-| GET | `/api/customers/:id` | صفحة `customers` |
-| POST | `/api/customers` | `validateCustomer` |
-| PUT | `/api/customers/:id` | صفحة `customers` |
-| DELETE | `/api/customers/:id` | صفحة `customers` |
+| `/api/customers` | GET/POST/PUT/DELETE | `phone` فريد — 409 للمكرر |
+| `/api/suppliers` | GET/POST/PUT/DELETE | |
+| `/api/delegates` | GET/POST/PUT/DELETE + `PATCH /:id/status` | `status`: `AVAILABLE/UNAVAILABLE` |
+
+كل القوائم paginated.
 
 ---
 
 ## Raw Materials (Inventory) — `/api/raw-materials`
 
-| Method | Endpoint | ملاحظات |
+| Method | Endpoint | Action |
 |---|---|---|
-| GET | `/api/raw-materials` | صفحة `inventory` |
-| POST | `/api/raw-materials` | صفحة `inventory` |
-| GET | `/api/raw-materials/:id/batches` | صفحة `inventory` |
-| POST | `/api/raw-materials/:id/batches` | صفحة `inventory` — إضافة دفعة |
-| PUT | `/api/raw-materials/:id` | صفحة `inventory` |
-| DELETE | `/api/raw-materials/:id` | صفحة `inventory` |
-
-> ملاحظة: الفرونت يستدعي `POST /api/inventory/materials` — هذا الـ endpoint **غير موجود** في الـ backend (المسار الصحيح `/api/raw-materials`).
-
----
-
-## Suppliers — `/api/suppliers`
-
-| Method | Endpoint | ملاحظات |
-|---|---|---|
-| GET | `/api/suppliers` | صفحة `suppliers` |
-| GET | `/api/suppliers/:id` | صفحة `suppliers` |
-| POST | `/api/suppliers` | صفحة `suppliers` |
-| PUT | `/api/suppliers/:id` | صفحة `suppliers` |
-| DELETE | `/api/suppliers/:id` | صفحة `suppliers` |
+| GET | `/api/raw-materials` | `view_inventory` — paginated |
+| POST | `/api/raw-materials` | `create_material` — body يشمل `{ name, unit, quantity, pricePerUnit, supplier, minStockAlert, expiryDate? }` — يُنشئ دفعة أولى تلقائيًا |
+| GET | `/api/raw-materials/:id/batches` | `view_inventory` |
+| POST | `/api/raw-materials/:id/batches` | `add_batch` — `{ quantity, pricePerUnit, expiryDate? }` |
+| PUT | `/api/raw-materials/:id` | `edit_material` |
+| DELETE | `/api/raw-materials/:id` | `delete_material` |
 
 ---
 
 ## Products — `/api/products`
 
-| Method | Endpoint | ملاحظات |
-|---|---|---|
-| GET | `/api/products` | صفحة `products` |
-| GET | `/api/products/:id` | صفحة `products` |
-| POST | `/api/products` | صفحة `products` |
-| GET | `/api/products/:productId/sizes` | صفحة `products` |
-| POST | `/api/products/:productId/sizes` | صفحة `products` |
-| POST | `/api/products/:productId/sizes/:sizeId/ingredients` | صفحة `products` — إضافة مكوّن لحجم |
-| GET | `/api/products/:productId/types` | صفحة `products` — أنواع المشروب |
-| POST | `/api/products/:productId/types` | صفحة `products` — إنشاء نوع |
-| PUT | `/api/products/:productId/types/:typeId` | صفحة `products` |
-| DELETE | `/api/products/:productId/types/:typeId` | صفحة `products` |
-| POST | `/api/products/:productId/types/:typeId/ingredients/:rawMaterialId` | صفحة `products` — إضافة مكوّن لنوع |
-| DELETE | `/api/products/:productId/types/:typeId/ingredients/:rawMaterialId` | صفحة `products` — إزالة مكوّن من نوع |
-| GET | `/api/products/:productId/addons` | صفحة `products` — الإضافات |
-| POST | `/api/products/:productId/addons` | صفحة `products` — إنشاء إضافة |
-| PUT | `/api/products/:productId/addons/:addonId` | صفحة `products` |
-| DELETE | `/api/products/:productId/addons/:addonId` | صفحة `products` |
-| PUT | `/api/products/:id` | صفحة `products` |
-| DELETE | `/api/products/:id` | صفحة `products` |
+| Method | Endpoint |
+|---|---|
+| GET | `/api/products` |
+| POST | `/api/products` |
+| GET/POST | `/:productId/sizes` |
+| POST | `/:productId/sizes/:sizeId/ingredients` |
+| GET/POST | `/:productId/types` |
+| PUT/DELETE | `/:productId/types/:typeId` |
+| POST/DELETE | `/:productId/types/:typeId/ingredients/:rawMaterialId` |
+| GET/POST | `/:productId/addons` |
+| PUT/DELETE | `/:productId/addons/:addonId` |
+| PUT | `/api/products/:id` |
+| DELETE | `/api/products/:id` |
+
+> كل الفلوس `Decimal` (بما فيها `ProductAddon.price` بعد الإصلاح).
 
 ---
 
 ## Returns — `/api/returns`
 
-| Method | Endpoint | Action | ملاحظات |
-|---|---|---|---|
-| GET | `/api/returns` | `view_returns` | ✓ مُمنوحة في الـ seed |
-| POST | `/api/returns` | `create_return` | ✓ |
-| PATCH | `/api/returns/:id/approve` | `approve_return` | ✓ |
-| PATCH | `/api/returns/:id/cancel` | `cancel_return` | ✓ |
-| GET | `/api/returns/:id` | `view_returns` | ✓ |
-| PUT | `/api/returns/:id` | `edit_return` | ✓ |
-| DELETE | `/api/returns/:id` | `delete_return` | ✓ |
-
----
-
-## Delegates — `/api/delegates`
-
 | Method | Endpoint | ملاحظات |
 |---|---|---|
-| GET | `/api/delegates` | صفحة `delegates` |
-| GET | `/api/delegates/:id` | صفحة `delegates` |
-| POST | `/api/delegates` | صفحة `delegates` |
-| PUT | `/api/delegates/:id` | صفحة `delegates` |
-| PATCH | `/api/delegates/:id/status` | صفحة `delegates` — تفعيل/تعطيل |
-| DELETE | `/api/delegates/:id` | صفحة `delegates` |
+| GET | `/api/returns` | paginated |
+| GET | `/api/returns/:id` | |
+| POST | `/api/returns` | تنشأ `DRAFT` — body: `{ supplierId, returnNo, generalReason?, notes?, items: [{ rawMaterialId, quantity, reason? }] }` |
+| PATCH | `/api/returns/:id/approve` | DRAFT → APPROVED (يرجع المخزون للمورد/يخصم) |
+| PATCH | `/api/returns/:id/cancel` | DRAFT only |
+| PUT | `/api/returns/:id` | DRAFT only |
+| DELETE | `/api/returns/:id` | DRAFT only |
 
 ---
 
@@ -173,142 +150,72 @@ Response:
 
 | Method | Endpoint | ملاحظات |
 |---|---|---|
-| POST | `/api/orders` | صفحة `orders` |
-| GET | `/api/orders` | صفحة `orders` |
-| GET | `/api/orders/:id` | صفحة `orders` |
-| PUT | `/api/orders/:id` | `validateOrder` |
-| DELETE | `/api/orders/:id` | صفحة `orders` |
-
-> ملاحظة: لا يوجد endpoint مخصص لتحديث حالة الطلب أو إسناد مندوب (PUT يغطي بعض ذلك جزئيًا عبر تحديث جزئي).
+| GET | `/api/orders` | paginated |
+| GET | `/api/orders/:id` | |
+| POST | `/api/orders` | body: `{ orderType, paymentMethod?, discount?, delegateId?, customerId?, phone?, notes?, items: [...] }` — `orderType`: `DINE_IN/TAKEAWAY/ONLINE` |
+| PUT | `/api/orders/:id` | يشمل تحديث الحالة (`PENDING/PREPARING/READY/COMPLETED/CANCELLED`) والمندوب |
+| DELETE | `/api/orders/:id` | |
 
 ---
 
-## Cash Drawer Shifts — `/api/cash-drawer-shifts`
+## Cash Drawer / Shifts — `/api/cash-drawer-shifts`
 
-الصفحة: `cash_drawer_shifts`
-
-| Method | Endpoint | Action |
-|---|---|---|
-| GET | `/api/cash-drawer-shifts` | `view_shifts_report` |
-| GET | `/api/cash-drawer-shifts/current` | `view_shifts_report` |
-| GET | `/api/cash-drawer-shifts/:id` | `view_shifts_report` |
-| POST | `/api/cash-drawer-shifts` | `open_shift` |
-| POST | `/api/cash-drawer-shifts/:id/close` | `close_shift` |
-| POST | `/api/cash-drawer-shifts/:id/cash-in` | `record_cash_in` |
-| POST | `/api/cash-drawer-shifts/:id/cash-out` | `record_cash_out` |
-
----
-
-## Audit Logs — `/api/audit-logs`
-
-الصفحة: `audit_log`
-
-| Method | Endpoint | Action |
-|---|---|---|
-| GET | `/api/audit-logs` | `view_audit_log` |
-| GET | `/api/audit-logs/:id` | `view_audit_log` |
-
----
-
-## Settings — `/api/settings`
-
-الصفحة: `settings`
-
-| Method | Endpoint | Action |
-|---|---|---|
-| GET | `/api/settings` | `view_settings` |
-| POST | `/api/settings/bulk` | `update_settings` |
-| PUT | `/api/settings/:key` | `update_settings` |
-
----
-
-## Warnings — `/api/warnings`
-
-الصفحة: `warnings`
-
-| Method | Endpoint | Action |
-|---|---|---|
-| GET | `/api/warnings` | `view_warnings` |
+| Method | Endpoint |
+|---|---|
+| GET | `/api/cash-drawer-shifts` (+ pagination) |
+| GET | `/api/cash-drawer-shifts/current` — الوردية المفتوحة حاليًا |
+| GET | `/api/cash-drawer-shifts/:id` |
+| POST | `/api/cash-drawer-shifts` — `{ openingBalance }` — وردية واحدة مفتوحة فقط |
+| POST | `/api/cash-drawer-shifts/:id/close` — `{ closingBalance, actualBalance, difference?, notes? }` |
+| POST | `/api/cash-drawer-shifts/:id/cash-in` — `{ amount, type }` — types: `SALES, COLLECTION` |
+| POST | `/api/cash-drawer-shifts/:id/cash-out` — `{ amount, type }` — types: `EXPENSE, SALARY, MAINTENANCE, PURCHASE, INCENTIVE` |
 
 ---
 
 ## Financial Reports — `/api/financial-reports`
 
-الصفحة: `financial_reports`
-
 | Method | Endpoint | Action |
 |---|---|---|
-| GET | `/api/financial-reports/sales` | `view_sales_report` |
-| GET | `/api/financial-reports/profit` | `view_profit_report` |
-| GET | `/api/financial-reports/treasury` | `view_treasury_report` |
+| GET | `/sales` | `view_sales_report` — `from?` `to?` |
+| GET | `/profit` | `view_profit_report` — `from?` `to?` |
+| GET | `/treasury` | `view_treasury_report` |
 
 ---
 
-## Dashboard — `/api/dashboard`
+## لوحة أخرى
 
-الصفحة: `dashboard`
-
-| Method | Endpoint | Action |
-|---|---|---|
-| GET | `/api/dashboard` | صفحة `dashboard` |
-
-يرجع ملخص: مبيعات اليوم/الإجمالي، طلبات اليوم/الإجمالي، الطلبات المعلقة، الوردية المفتوحة (رصيد/داخل/خارج)، إحصائيات (منتجات/عملاء/موردين/مناديب)، تنبيهات المخزون (low stock + قرب الانتهاء).
-
-> **تسجيل حضور الموظفين**: دخول الموظف بحسابه (`POST /api/auth/login`) هو الأساس — يُسجَّل تلقائيًا في `سجل الأحداث` (Audit Log) بعملية `login`. لا يوجد نظام حضور بأجهزة/QR/بصمة.
+| Module | Endpoint | Action | ملاحظات |
+|---|---|---|---|
+| Dashboard | `GET /api/dashboard` | `dashboard` | ملخص مبيعات/طلبات/وردية/تنبيهات |
+| Warnings | `GET /api/warnings` | `view_warnings` | مخزون منخفض + قرب انتهاء الصلاحية |
+| Audit Logs | `GET /api/audit-logs` (+ `/:id`) | `view_audit_log` | paginated — فلترة `page/action/userId/from/to` |
+| Settings | `GET /api/settings` | `view_settings` | |
+| Settings | `PUT /api/settings/:key` | `update_settings` | `{ value }` — OWNER فقط |
+| Settings | `POST /api/settings/bulk` | `update_settings` | `{ settings: [{ key, value }] }` |
+| Backup | `GET /api/backup/download` | `download_backup` | **OWNER فقط** — ملف SQLite متسق |
+| Chat | `POST /api/chat` | — | عام/موظف — OpenAI function calling — rate limited |
+| Health | `GET /api/health` | — | عام |
 
 ---
 
-## AI Chat — `/api/chat`
+## إعدادات البيئة (`.env`)
 
-| Method | Endpoint | Auth |
-|---|---|---|
-| POST | `/api/chat` | اختياري (عام للعملاء) |
-
-Body:
-```json
-{ "messages": [{ "role": "user", "content": "ما هي المنتجات المتاحة؟" }] }
 ```
-
-- **عام**: أي زائر يرسل — رد عام + معلومات المنيو (المنتجات فقط).
-- **موظف/مدير**: لو مررتَ `Authorization: Bearer <JWT>` صالحًا في الهيدر، تُفعّل أدوات بيانات كاملة (مخزون منخفض، ملخص مبيعات، حالات الطلبات، ملخص اللوحة).
-- الآلية: **OpenAI Function Calling** — البوت ينفّذ أدوات فعلية على الداتابيز ثم يرد بالنص.
-- مطلوب إعداد `OPENAI_API_KEY` (واختياري `OPENAI_MODEL`، الافتراضي `gpt-4o-mini`) في `.env`.
-
----
-
-## Health
-
-### GET `/api/health`
-عام (بدون توكن).
-```json
-{ "success": true, "message": "404 Coffee API is running" }
+PORT=5000
+DATABASE_URL="file:./prisma/dev.db"
+JWT_SECRET="CHANGE_THIS_SECRET"
+JWT_EXPIRES_IN="7d"
+NODE_ENV="development"
+OPENAI_API_KEY="sk-..."   # اختياري — للبوت
+OPENAI_MODEL="gpt-4o-mini"
 ```
 
 ---
 
 ## ملخص سريع
 
-| الموديول | المسار | عدد الـ endpoints | الحالة |
-|---|---|---|---|
-| Auth | `/api/auth` | 1 | ✓ |
-| Users | `/api/users` | 7 | ✓ |
-| Permissions | `/api/permissions` | 1 | ✓ |
-| Sales | `/api/sales` | 5 | ✓ |
-| Purchases | `/api/purchases` | 7 | ✓ |
-| Customers | `/api/customers` | 5 | ✓ |
-| Raw Materials | `/api/raw-materials` | 6 | ✓ |
-| Suppliers | `/api/suppliers` | 5 | ✓ |
-| Products | `/api/products` | 18 | ✓ |
-| Returns | `/api/returns` | 7 | ✓ |
-| Delegates | `/api/delegates` | 6 | ✓ |
-| Orders | `/api/orders` | 5 | ✓ |
-| Cash Drawer | `/api/cash-drawer-shifts` | 7 | ✓ |
-| Audit Logs | `/api/audit-logs` | 2 | ✓ |
-| Settings | `/api/settings` | 3 | ✓ |
-| Warnings | `/api/warnings` | 1 | ✓ |
-| Financial Reports | `/api/financial-reports` | 3 | ✓ |
-| Dashboard | `/api/dashboard` | 1 | ✓ |
-| AI Chat | `/api/chat` | 1 | ✓ (يحتاج `OPENAI_API_KEY`) |
-| Health | `/api/health` | 1 | ✓ |
-
-> **92 endpoint** إجماليًا، كلها موثقة أعلاه. `src/modules/auth/` هي موضع موديول تسجيل الدخول (نُقل من البنية القديمة `src/routes|controllers|services`).
+- قاعدة البيانات: **SQLite WAL** (`prisma/dev.db`).
+- الـ migrations مدمجة في ملف واحد: `20260816170101_init`.
+- التوثيق التفاعلي: `/api/docs` — JSON خام: `/api/docs.json`.
+- الاختبارات: `npm test` — node:test + supertest على قاعدة منفصلة `prisma/test.db` (تتبنى تلقائيًا قبل التشغيل).
+- إعادة بناء الداتابيز: `npm run db:reset` (⚠️ يمسح البيانات).

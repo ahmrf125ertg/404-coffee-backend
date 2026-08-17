@@ -1,14 +1,22 @@
 const purchaseService = require("./purchase.service");
 const { logAudit } = require("../../utils/audit");
+const { parsePagination } = require("../../utils/pagination");
 
 // Get all purchases
 const getPurchases = async (req, res, next) => {
     try {
-        const purchases = await purchaseService.getPurchases();
+        const { items, total } = await purchaseService.getPurchases(req.query);
+        const { page, pageSize } = parsePagination(req.query);
 
         res.status(200).json({
             success: true,
-            data: purchases,
+            data: items,
+            pagination: {
+                page,
+                pageSize,
+                total,
+                totalPages: Math.ceil(total / pageSize),
+            },
         });
     } catch (error) {
         next(error);

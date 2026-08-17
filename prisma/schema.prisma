@@ -6,7 +6,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
 }
 
 model User {
@@ -14,13 +14,11 @@ model User {
   name         String
   passwordHash String
   position     String
+  role         Role       @default(MANAGER)
   status       UserStatus @default(ACTIVE)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  pagePermissions   UserPagePermission[]
-  actionPermissions UserActionPermission[]
 
   openedShifts               CashDrawerShift[]       @relation("OpenedShifts")
   closedShifts               CashDrawerShift[]       @relation("ClosedShifts")
@@ -32,29 +30,11 @@ model User {
   @@map("users")
 }
 
-model UserPagePermission {
-  id      Int     @id @default(autoincrement())
-  userId  Int
-  page    String
-  enabled Boolean @default(false)
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, page])
-  @@map("user_page_permissions")
-}
-
-model UserActionPermission {
-  id      Int     @id @default(autoincrement())
-  userId  Int
-  page    String
-  action  String
-  enabled Boolean @default(false)
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, page, action])
-  @@map("user_action_permissions")
+enum Role {
+  OWNER
+  MANAGER
+  CASHIER
+  DELEGATE
 }
 
 enum UserStatus {
@@ -67,7 +47,7 @@ model RawMaterial {
   name            String  @unique
   unit            String
   supplier        String
-  minStockAlert   Decimal @db.Decimal(12, 2)
+  minStockAlert   Decimal 
   expiryAlertDays Int?
 
   addedAt   DateTime @default(now())
@@ -88,8 +68,8 @@ model RawMaterial {
 model RawMaterialBatch {
   id            Int       @id @default(autoincrement())
   rawMaterialId Int
-  quantity      Decimal   @db.Decimal(12, 2)
-  pricePerUnit  Decimal   @db.Decimal(12, 2)
+  quantity      Decimal   
+  pricePerUnit  Decimal   
   expiryDate    DateTime?
   addedAt       DateTime  @default(now())
 
@@ -161,8 +141,8 @@ model ProductSize {
   typeName  String
   name      String
 
-  basePrice  Decimal @db.Decimal(12, 2)
-  finalPrice Decimal @db.Decimal(12, 2)
+  basePrice  Decimal 
+  finalPrice Decimal 
 
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
@@ -183,7 +163,7 @@ model ProductSizeIngredient {
   productSizeId Int
   rawMaterialId Int
 
-  quantity Decimal @db.Decimal(12, 2)
+  quantity Decimal 
   unit     String
 
   productSize ProductSize @relation(fields: [productSizeId], references: [id], onDelete: Cascade)
@@ -202,7 +182,7 @@ model ProductAddon {
   id        Int     @id @default(autoincrement())
   productId Int
   name      String
-  price     Float
+  price     Decimal
   notes     String?
 
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -251,8 +231,8 @@ model Supplier {
   supplierType          String
   supplierCategory      String
   paymentTerms          String?
-  creditLimit           Decimal @default(0) @db.Decimal(12, 2)
-  openingBalance        Decimal @default(0) @db.Decimal(12, 2)
+  creditLimit           Decimal @default(0) 
+  openingBalance        Decimal @default(0) 
   notes                 String?
 
   createdAt DateTime @default(now())
@@ -276,9 +256,9 @@ model Purchase {
   supplierId Int
 
   invoiceDate DateTime
-  discount    Decimal  @default(0) @db.Decimal(12, 2)
-  total       Decimal  @db.Decimal(12, 2)
-  finalTotal  Decimal  @db.Decimal(12, 2)
+  discount    Decimal  @default(0) 
+  total       Decimal  
+  finalTotal  Decimal  
 
   status PurchaseStatus @default(DRAFT)
 
@@ -301,10 +281,10 @@ model PurchaseItem {
   purchaseId    Int
   rawMaterialId Int
 
-  quantity     Decimal @db.Decimal(12, 2)
+  quantity     Decimal 
   unit         String
-  pricePerUnit Decimal @db.Decimal(12, 2)
-  totalPrice   Decimal @db.Decimal(12, 2)
+  pricePerUnit Decimal 
+  totalPrice   Decimal 
 
   purchase    Purchase    @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
   rawMaterial RawMaterial @relation(fields: [rawMaterialId], references: [id])
@@ -333,9 +313,9 @@ model Sale {
 
   customerId Int?
 
-  subtotal Decimal @db.Decimal(12, 2)
-  discount Decimal @default(0) @db.Decimal(12, 2)
-  total    Decimal @db.Decimal(12, 2)
+  subtotal Decimal 
+  discount Decimal @default(0) 
+  total    Decimal 
 
   paymentMethod PaymentMethod @default(CASH)
   status        SaleStatus    @default(COMPLETED)
@@ -358,9 +338,9 @@ model SaleItem {
   saleId        Int
   productId     Int
   productSizeId Int
-  quantity      Decimal @db.Decimal(12, 2)
-  unitPrice     Decimal @db.Decimal(12, 2)
-  totalPrice    Decimal @db.Decimal(12, 2)
+  quantity      Decimal 
+  unitPrice     Decimal 
+  totalPrice    Decimal 
 
   sale        Sale        @relation(fields: [saleId], references: [id], onDelete: Cascade)
   product     Product     @relation(fields: [productId], references: [id])
@@ -404,9 +384,9 @@ model Order {
 
   phone String?
 
-  subtotal Decimal @db.Decimal(12, 2)
-  discount Decimal @default(0) @db.Decimal(12, 2)
-  total    Decimal @db.Decimal(12, 2)
+  subtotal Decimal 
+  discount Decimal @default(0) 
+  total    Decimal 
 
   paymentMethod PaymentMethod @default(CASH)
 
@@ -436,9 +416,9 @@ model OrderItem {
   productId     Int
   productSizeId Int
 
-  quantity   Decimal @db.Decimal(12, 2)
-  unitPrice  Decimal @db.Decimal(12, 2)
-  totalPrice Decimal @db.Decimal(12, 2)
+  quantity   Decimal 
+  unitPrice  Decimal 
+  totalPrice Decimal 
 
   order       Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product     Product     @relation(fields: [productId], references: [id])
@@ -473,8 +453,8 @@ model Return {
   generalReason String?
   notes         String?
 
-  totalQuantity Decimal @default(0) @db.Decimal(12, 2)
-  totalValue    Decimal @default(0) @db.Decimal(12, 2)
+  totalQuantity Decimal @default(0) 
+  totalValue    Decimal @default(0) 
 
   status ReturnStatus @default(DRAFT)
 
@@ -497,10 +477,10 @@ model ReturnItem {
   returnId      Int
   rawMaterialId Int
 
-  quantity     Decimal @db.Decimal(12, 2)
+  quantity     Decimal 
   unit         String
-  pricePerUnit Decimal @db.Decimal(12, 2)
-  totalPrice   Decimal @db.Decimal(12, 2)
+  pricePerUnit Decimal 
+  totalPrice   Decimal 
 
   reason String?
 
@@ -565,12 +545,12 @@ model CashDrawerShift {
   id             Int         @id @default(autoincrement())
   openedByUserId Int
   openedAt       DateTime    @default(now())
-  openingBalance Decimal     @db.Decimal(12, 2)
+  openingBalance Decimal     
   closedByUserId Int?
   closedAt       DateTime?
-  closingBalance Decimal?    @db.Decimal(12, 2)
-  actualBalance  Decimal?    @db.Decimal(12, 2)
-  difference     Decimal?    @db.Decimal(12, 2)
+  closingBalance Decimal?    
+  actualBalance  Decimal?    
+  difference     Decimal?    
   notes          String?
   status         ShiftStatus @default(OPEN)
 
@@ -592,7 +572,7 @@ model CashDrawerTransaction {
   id               Int                   @id @default(autoincrement())
   shiftId          Int
   type             DrawerTransactionType
-  amount           Decimal               @db.Decimal(12, 2)
+  amount           Decimal               
   description      String?
   recordedByUserId Int
 

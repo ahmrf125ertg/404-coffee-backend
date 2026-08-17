@@ -1,5 +1,6 @@
 const saleService = require("./sale.service");
 const { logAudit } = require("../../utils/audit");
+const { parsePagination } = require("../../utils/pagination");
 
 // ============================================================
 // Get all sales
@@ -7,11 +8,18 @@ const { logAudit } = require("../../utils/audit");
 
 const getSales = async (req, res, next) => {
     try {
-        const sales = await saleService.getSales(req.query);
+        const { page, pageSize } = parsePagination(req.query);
+        const { items, total } = await saleService.getSales(req.query);
 
         res.status(200).json({
             success: true,
-            data: sales,
+            data: items,
+            pagination: {
+                page,
+                pageSize,
+                total,
+                totalPages: Math.ceil(total / pageSize),
+            },
         });
     } catch (error) {
         next(error);

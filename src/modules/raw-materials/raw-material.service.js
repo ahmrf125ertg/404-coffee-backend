@@ -8,32 +8,41 @@
  */
 
 const prisma = require("../../lib/prisma");
+const { parsePagination } = require("../../utils/pagination");
 
 // ============================================================
 // Get all raw materials
 // ============================================================
 
-const getRawMaterials = async () => {
-    const rawMaterials = await prisma.rawMaterial.findMany({
-        orderBy: {
-            createdAt: "desc",
-        },
+const getRawMaterials = async (reqQuery = {}) => {
+    const { skip, take } = parsePagination(reqQuery);
 
-        include: {
-            batches: {
-                orderBy: [
-                    {
-                        expiryDate: "asc",
-                    },
-                    {
-                        createdAt: "asc",
-                    },
-                ],
+    const [rawMaterials, total] = await Promise.all([
+        prisma.rawMaterial.findMany({
+            orderBy: {
+                createdAt: "desc",
             },
-        },
-    });
 
-    return rawMaterials;
+            include: {
+                batches: {
+                    orderBy: [
+                        {
+                            expiryDate: "asc",
+                        },
+                        {
+                            createdAt: "asc",
+                        },
+                    ],
+                },
+            },
+
+            skip,
+            take,
+        }),
+        prisma.rawMaterial.count(),
+    ]);
+
+    return { items: rawMaterials, total };
 };
 
 // ============================================================

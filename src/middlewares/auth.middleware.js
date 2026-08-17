@@ -44,6 +44,7 @@ const authMiddleware = async (req, res, next) => {
       },
       select: {
         id: true,
+        role: true,
         status: true,
       },
     });
@@ -63,7 +64,11 @@ const authMiddleware = async (req, res, next) => {
     }
 
     // Attach authenticated user to request
-    req.user = decoded;
+    // (role بتجيله من الداتابيز عشان أي تغيير في الدور يبان فورًا من غير إعادة تسجيل دخول)
+    req.user = {
+      ...decoded,
+      role: user.role,
+    };
 
     next();
   } catch (error) {

@@ -1,5 +1,6 @@
 const customerService = require("./customer.service");
 const { logAudit } = require("../../utils/audit");
+const { parsePagination } = require("../../utils/pagination");
 
 // ============================================================
 // Get all customers
@@ -7,13 +8,20 @@ const { logAudit } = require("../../utils/audit");
 
 const getCustomers = async (req, res, next) => {
     try {
-        const customers = await customerService.getCustomers(
+        const { page, pageSize } = parsePagination(req.query);
+        const { items, total } = await customerService.getCustomers(
             req.query
         );
 
         res.status(200).json({
             success: true,
-            data: customers,
+            data: items,
+            pagination: {
+                page,
+                pageSize,
+                total,
+                totalPages: Math.ceil(total / pageSize),
+            },
         });
     } catch (error) {
         next(error);

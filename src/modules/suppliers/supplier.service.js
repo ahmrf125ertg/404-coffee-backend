@@ -1,14 +1,21 @@
 const prisma = require("../../lib/prisma");
+const { parsePagination } = require("../../utils/pagination");
 
 // Get all suppliers
-const getSuppliers = async () => {
-    const suppliers = await prisma.supplier.findMany({
-        orderBy: {
-            createdAt: "desc",
-        },
-    });
+const getSuppliers = async (reqQuery = {}) => {
+    const { skip, take } = parsePagination(reqQuery);
 
-    return suppliers;
+    const [items, total] = await Promise.all([
+        prisma.supplier.findMany({
+            orderBy: {
+                createdAt: "desc",
+            },
+            skip,
+            take,
+        }),
+        prisma.supplier.count(),
+    ]);
+    return { items, total };
 };
 
 

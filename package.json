@@ -1,7 +1,7 @@
 {
   "name": "404-coffee-backend",
-  "version": "1.0.0",
-  "description": "",
+  "version": "2.0.0",
+  "description": "نظام إدارة كافيه — Express 5 + Prisma 7 + SQLite (WAL) + RBAC",
   "main": "index.js",
   "scripts": {
     "dev": "nodemon src/server.js",
@@ -10,25 +10,32 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "db:seed": "node prisma/seed.js",
-    "db:seed-permissions": "node prisma/seed-permissions.js"
-
+    "db:reset": "node scripts/reset-db.js",
+    "test": "node --test --test-concurrency=1 \"tests/*.test.js\""
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "@prisma/adapter-pg": "^7.9.1",
+    "@prisma/adapter-better-sqlite3": "^7.9.1",
     "@prisma/client": "^7.9.1",
     "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^13.0.3",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.6.2",
+    "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.3",
-    "pg": "^8.22.0",
-    "prisma": "^7.9.1"
+    "pino": "^10.3.1",
+    "pino-http": "^11.0.0",
+    "prisma": "^7.9.1",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1"
   },
   "devDependencies": {
-    "nodemon": "^3.1.14"
+    "nodemon": "^3.1.14",
+    "supertest": "^7.1.1"
   }
 }

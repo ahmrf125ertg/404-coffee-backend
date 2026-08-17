@@ -1,15 +1,17 @@
 const prisma = require("../../lib/prisma");
 
+const { parsePagination } = require("../../utils/pagination");
+
 // ============================================================
 // Get audit logs
 // ============================================================
 
-const getAuditLogs = async ({ page, action, userId, from, to, limit } = {}) => {
-    const where = {};
+const getAuditLogs = async (reqQuery = {}) => {
+    const { skip, take } = parsePagination(reqQuery);
 
-    if (page) {
-        where.page = page;
-    }
+    const { action, userId, from, to } = reqQuery;
+
+    const where = {};
 
     if (action) {
         where.action = action;
@@ -39,24 +41,28 @@ const getAuditLogs = async ({ page, action, userId, from, to, limit } = {}) => {
         }
     }
 
-    const parsedLimit = limit ? Math.min(Number(limit) || 100, 200) : 100;
-
-    return prisma.auditLog.findMany({
-        where,
-        orderBy: {
-            createdAt: "desc",
-        },
-        take: parsedLimit,
-        include: {
-            user: {
-                select: {
-                    id: true,
-                    name: true,
-                    position: true,
+    const [logs, total] = await Promise.all([
+        prisma.auditLog.findMany({
+            where,
+            orderBy: {
+                createdAt: "desc",
+            },
+            skip,
+            take,
+            include: {
+                user: {
+                    select: {
+                        id: true,
+                        name: true,
+                        position: true,
+                    },
                 },
             },
-        },
-    });
+        }),
+        prisma.auditLog.count({ where }),
+    ]);
+
+    return { items: logs, total };
 };
 
 // ============================================================

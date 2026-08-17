@@ -10,6 +10,8 @@ node_modules/
 !.env.example
 
 prisma/*.db
+prisma/*.db-shm
+prisma/*.db-wal
 npm-debug.log*
 
 

@@ -1,5 +1,7 @@
 const prisma = require("../../lib/prisma");
 
+const { parsePagination } = require("../../utils/pagination");
+
 // ============================================================
 // Helpers
 // ============================================================
@@ -244,6 +246,8 @@ const createOrder = async (data) => {
 // ============================================================
 
 const getOrders = async (filters = {}) => {
+    const { skip, take } = parsePagination(filters);
+
     const {
         status,
         orderType,
@@ -274,17 +278,23 @@ const getOrders = async (filters = {}) => {
         where.delegateId = Number(delegateId);
     }
 
-    const orders = await prisma.order.findMany({
-        where,
+    const [orders, total] = await Promise.all([
+        prisma.order.findMany({
+            where,
 
-        include: getOrderInclude,
+            include: getOrderInclude,
 
-        orderBy: {
-            createdAt: "desc",
-        },
-    });
+            orderBy: {
+                createdAt: "desc",
+            },
 
-    return orders;
+            skip,
+            take,
+        }),
+        prisma.order.count({ where }),
+    ]);
+
+    return { items: orders, total };
 };
 
 // ============================================================

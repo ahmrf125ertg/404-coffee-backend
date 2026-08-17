@@ -13,15 +13,23 @@
 
 const rawMaterialService = require("./raw-material.service");
 const { logAudit } = require("../../utils/audit");
+const { parsePagination } = require("../../utils/pagination");
 
 // Get all raw materials
 const getRawMaterials = async (req, res, next) => {
     try {
-        const rawMaterials = await rawMaterialService.getRawMaterials();
+        const { items, total } = await rawMaterialService.getRawMaterials(req.query);
+        const { page, pageSize } = parsePagination(req.query);
 
         res.status(200).json({
             success: true,
-            data: rawMaterials,
+            data: items,
+            pagination: {
+                page,
+                pageSize,
+                total,
+                totalPages: Math.ceil(total / pageSize),
+            },
         });
 
     } catch (error) {

@@ -1,4 +1,5 @@
 const prisma = require("../../lib/prisma");
+const { parsePagination } = require("../../utils/pagination");
 
 // ============================================================
 // Get all sales
@@ -6,23 +7,23 @@ const prisma = require("../../lib/prisma");
 
 const getSales = async (reqQuery = {}) => {
     const { search, status, paymentMethod } = reqQuery;
+    const { skip, take } = parsePagination(reqQuery);
 
     const where = {};
 
     // Search by customer name or phone
+    // ملاحظة SQLite: الـ contains حساسية ASCII case-insensitive مدمجة (LIKE)
     if (search && search.trim()) {
         where.customer = {
             OR: [
                 {
                     name: {
                         contains: search.trim(),
-                        mode: "insensitive",
                     },
                 },
                 {
                     phone: {
                         contains: search.trim(),
-                        mode: "insensitive",
                     },
                 },
             ],
@@ -39,24 +40,31 @@ const getSales = async (reqQuery = {}) => {
         where.paymentMethod = paymentMethod;
     }
 
-    return prisma.sale.findMany({
-        where,
+    const [sales, total] = await Promise.all([
+        prisma.sale.findMany({
+            where,
 
-        include: {
-            customer: true,
+            include: {
+                customer: true,
 
-            items: {
-                include: {
-                    product: true,
-                    productSize: true,
+                items: {
+                    include: {
+                        product: true,
+                        productSize: true,
+                    },
                 },
             },
-        },
 
-        orderBy: {
-            createdAt: "desc",
-        },
-    });
+            orderBy: {
+                createdAt: "desc",
+            },
+            skip,
+            take,
+        }),
+        prisma.sale.count({ where }),
+    ]);
+
+    return { items: sales, total };
 };
 
 // ============================================================
@@ -945,12 +953,16 @@ const deleteSale = async (id) => {
         }
 
         // ----------------------------------------------------
-        // 3. Delete sale
+        // 3. Cancel sale (soft) — احتفاظ بالسجل المالي وتمييزه كمُلغى
         // ----------------------------------------------------
 
-        const deletedSale = await tx.sale.delete({
+        const deletedSale = await tx.sale.update({
             where: {
                 id: saleId,
+            },
+
+            data: {
+                status: "CANCELLED",
             },
 
             include: {

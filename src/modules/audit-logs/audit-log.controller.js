@@ -1,16 +1,26 @@
 const auditLogService = require("./audit-log.service");
 
+const { parsePagination } = require("../../utils/pagination");
+
 // ============================================================
 // Get audit logs
 // ============================================================
 
 const getAuditLogs = async (req, res, next) => {
     try {
-        const logs = await auditLogService.getAuditLogs(req.query);
+        const { items, total } = await auditLogService.getAuditLogs(req.query);
+
+        const { page, pageSize } = parsePagination(req.query);
 
         res.status(200).json({
             success: true,
-            data: logs,
+            data: items,
+            pagination: {
+                page,
+                pageSize,
+                total,
+                totalPages: Math.ceil(total / pageSize),
+            },
         });
     } catch (error) {
         next(error);

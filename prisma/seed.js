@@ -1,22 +1,8 @@
-
 /**
- * prisma/seed.js  — إنشاء أول مستخدم "Admin" في النظام
- * =========================================================
- * الهدف: إنشاء يوزر أدمن افتراضي عشان تقدر تسجل دخول أول مرة قبل ما يبقى عندك نظام تسجيل كامل.
- * 
- * الخطوات:
- * 1) bcrypt.hash("root123", 10) 
- *    → بيشفّر كلمة السر "root123" (متتخزنش أبدًا كنص عادي في الداتابيز - ده مبدأ أمان أساسي)
- *    → الرقم "10" ده "قوة التشفير" (salt rounds) - كل ما زاد الرقم زاد الأمان لكن زاد الوقت المستغرق
- * 
- * 2) prisma.user.create(...) 
- *    → ينشئ صف جديد في جدول users بالبيانات دي (الاسم، الباسورد المشفر، المنصب، الحالة)
- * 
- * 3) $disconnect() في النهاية 
- *    → يقفل الاتصال بالداتابيز بعد ما السكريبت يخلص شغله (مهم في السكريبتات المستقلة زي دي، 
- *      عكس السيرفر العادي اللي بيفضل الاتصال شغال طول الوقت)
- * 
- * يتشغل مرة واحدة بس بالأمر: node prisma/seed.js
+ * prisma/seed.js — البيانات الافتراضية (idempotent — آمن للتشغيل المتكرر)
+ * ======================================================================
+ * 1) إنشاء الـ Owner الأساسي (Admin / root123) لو مش موجود.
+ * 2) إعدادات افتراضية زي ما تكون النظام.
  */
 
 require("dotenv").config();
@@ -26,18 +12,41 @@ const bcrypt = require("bcryptjs");
 const prisma = require("../src/lib/prisma");
 
 async function main() {
-  const passwordHash = await bcrypt.hash("root123", 10);
-
-  const user = await prisma.user.create({
-    data: {
-      name: "Admin",
-      passwordHash,
-      position: "ADMIN",
-      status: "ACTIVE",
-    },
+  const existing = await prisma.user.findFirst({
+    where: { name: "Admin" },
   });
 
-  console.log("Seed user created:", user.name);
+  if (!existing) {
+    const passwordHash = await bcrypt.hash("root123", 10);
+
+    const user = await prisma.user.create({
+      data: {
+        name: "Admin",
+        passwordHash,
+        position: "OWNER",
+        role: "OWNER",
+        status: "ACTIVE",
+      },
+    });
+
+    console.log("Seed user created:", user.name, `(${user.role})`);
+  } else {
+    console.log("Seed user already exists — skipping");
+  }
+
+  const existingSettings = await prisma.setting.count();
+
+  if (existingSettings === 0) {
+    await prisma.setting.createMany({
+      data: [
+        { key: "shop_name", value: "404 Coffee", description: "اسم الكافيه" },
+        { key: "currency", value: "EGP", description: "العملة" },
+        { key: "tax_rate", value: "0", description: "نسبة الضريبة (0-100)" },
+      ],
+    });
+
+    console.log("Default settings created");
+  }
 }
 
 main()

@@ -2,6 +2,8 @@ const prisma = require("../../lib/prisma");
 
 const { createAuditLog } = require("../../utils/audit");
 
+const { parsePagination } = require("../../utils/pagination");
+
 const IN_TYPES = ["SALES", "COLLECTION"];
 const OUT_TYPES = ["EXPENSE", "SALARY", "MAINTENANCE", "PURCHASE", "INCENTIVE"];
 
@@ -37,13 +39,22 @@ const shiftInclude = {
 // Get all shifts
 // ============================================================
 
-const getShifts = async () => {
-    return prisma.cashDrawerShift.findMany({
-        orderBy: {
-            createdAt: "desc",
-        },
-        include: shiftInclude,
-    });
+const getShifts = async (reqQuery = {}) => {
+    const { skip, take } = parsePagination(reqQuery);
+
+    const [shifts, total] = await Promise.all([
+        prisma.cashDrawerShift.findMany({
+            orderBy: {
+                createdAt: "desc",
+            },
+            include: shiftInclude,
+            skip,
+            take,
+        }),
+        prisma.cashDrawerShift.count(),
+    ]);
+
+    return { items: shifts, total };
 };
 
 // ============================================================

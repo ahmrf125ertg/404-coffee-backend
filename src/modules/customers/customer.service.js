@@ -1,4 +1,5 @@
 const prisma = require("../../lib/prisma");
+const { parsePagination } = require("../../utils/pagination");
 
 // ============================================================
 // Get all customers
@@ -6,6 +7,7 @@ const prisma = require("../../lib/prisma");
 
 const getCustomers = async (reqQuery = {}) => {
     const { search } = reqQuery;
+    const { skip, take } = parsePagination(reqQuery);
 
     const where = {};
 
@@ -26,12 +28,18 @@ const getCustomers = async (reqQuery = {}) => {
         ];
     }
 
-    return prisma.customer.findMany({
-        where,
-        orderBy: {
-            createdAt: "desc",
-        },
-    });
+    const [items, total] = await Promise.all([
+        prisma.customer.findMany({
+            where,
+            orderBy: {
+                createdAt: "desc",
+            },
+            skip,
+            take,
+        }),
+        prisma.customer.count({ where }),
+    ]);
+    return { items, total };
 };
 
 // ============================================================

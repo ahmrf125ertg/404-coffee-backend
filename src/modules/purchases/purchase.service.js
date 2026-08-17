@@ -1,23 +1,33 @@
 const prisma = require("../../lib/prisma");
+const { parsePagination } = require("../../utils/pagination");
 
 // ============================================================
 // Get all purchases
 // ============================================================
 
-const getPurchases = async () => {
-    return prisma.purchase.findMany({
-        orderBy: {
-            createdAt: "desc",
-        },
-        include: {
-            supplier: true,
-            items: {
-                include: {
-                    rawMaterial: true,
+const getPurchases = async (reqQuery = {}) => {
+    const { skip, take } = parsePagination(reqQuery);
+
+    const [purchases, total] = await Promise.all([
+        prisma.purchase.findMany({
+            orderBy: {
+                createdAt: "desc",
+            },
+            include: {
+                supplier: true,
+                items: {
+                    include: {
+                        rawMaterial: true,
+                    },
                 },
             },
-        },
-    });
+            skip,
+            take,
+        }),
+        prisma.purchase.count(),
+    ]);
+
+    return { items: purchases, total };
 };
 
 // ============================================================
@@ -578,9 +588,9 @@ const deletePurchase = async (id) => {
         throw error;
     }
 
-    if (purchase.status !== "DRAFT") {
+    if (purchase.status !== "DRAFT" && purchase.status !== "CANCELLED") {
         const error = new Error(
-            "Only draft purchases can be deleted"
+            "Only draft or cancelled purchases can be deleted"
         );
         error.statusCode = 400;
         throw error;

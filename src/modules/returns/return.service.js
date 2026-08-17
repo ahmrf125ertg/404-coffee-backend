@@ -1,4 +1,5 @@
 const prisma = require("../../lib/prisma");
+const { parsePagination } = require("../../utils/pagination");
 
 
 // ============================================================
@@ -185,23 +186,33 @@ const getReturns = async (filters = {}) => {
         where.status = status;
     }
 
-    return prisma.return.findMany({
-        where,
+    const { skip, take } = parsePagination(filters);
 
-        include: {
-            supplier: true,
+    const [returns, total] = await Promise.all([
+        prisma.return.findMany({
+            where,
 
-            items: {
-                include: {
-                    rawMaterial: true,
+            include: {
+                supplier: true,
+
+                items: {
+                    include: {
+                        rawMaterial: true,
+                    },
                 },
             },
-        },
 
-        orderBy: {
-            createdAt: "desc",
-        },
-    });
+            orderBy: {
+                createdAt: "desc",
+            },
+
+            skip,
+            take,
+        }),
+        prisma.return.count({ where }),
+    ]);
+
+    return { items: returns, total };
 };
 
 
