@@ -7,14 +7,9 @@ const { nodeEnv } = require("../../config/env");
 
 const router = express.Router();
 
-// == Chat with the AI assistant (public for customers; staff
-// capabilities are enabled automatically when a valid staff
-// token is provided in the Authorization header)
-
-// حد معقول لأن كل طلب لـ OpenAI ليه تكلفة — 30 طلب / 15 دقيقة لكل IP
 const chatLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: 30,
+  windowMs: parseInt(process.env.AI_RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
+  limit: parseInt(process.env.AI_RATE_LIMIT_MAX_REQUESTS) || 30,
   standardHeaders: true,
   legacyHeaders: false,
   skip: () => nodeEnv === "test",

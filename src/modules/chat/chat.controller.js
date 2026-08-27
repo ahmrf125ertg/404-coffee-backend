@@ -37,14 +37,7 @@ const resolveOptionalUser = async (req) => {
         select: {
             id: true,
             status: true,
-            pagePermissions: {
-                where: {
-                    enabled: true,
-                },
-                select: {
-                    id: true,
-                },
-            },
+            role: true,
         },
     });
 
@@ -52,8 +45,7 @@ const resolveOptionalUser = async (req) => {
         return null;
     }
 
-    // A user with no enabled page permissions has no staff access
-    if (user.pagePermissions.length === 0) {
+    if (user.role === "DELEGATE") {
         return null;
     }
 

@@ -1,4 +1,4 @@
-const { openaiApiKey, openaiModel } = require("../../config/env");
+const { aiApiKey, aiModel } = require("../../config/env");
 const { definitions, executors, publicToolNames } = require("./chat.tools");
 
 const PUBLIC_SYSTEM_PROMPT = `
@@ -40,18 +40,18 @@ const validateMessages = (messages) => {
     });
 };
 
-const callOpenAI = async (body) => {
+const callDeepSeek = async (body) => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 45000);
 
     try {
         const response = await fetch(
-            "https://api.openai.com/v1/chat/completions",
+            "https://api.deepseek.com/v1/chat/completions",
             {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
-                    Authorization: `Bearer ${openaiApiKey}`,
+                    Authorization: `Bearer ${aiApiKey}`,
                 },
                 body: JSON.stringify(body),
                 signal: controller.signal,
@@ -61,7 +61,7 @@ const callOpenAI = async (body) => {
         if (!response.ok) {
             const errorText = await response.text();
             const error = new Error(
-                `OpenAI API error (${response.status}): ${errorText.slice(0, 300)}`
+                `DeepSeek API error (${response.status}): ${errorText.slice(0, 300)}`
             );
             error.statusCode = 502;
             throw error;
@@ -109,9 +109,9 @@ const executeToolCalls = async (toolCalls) => {
 const chatWithAssistant = async ({ messages, isStaff }) => {
     const history = validateMessages(messages);
 
-    if (!openaiApiKey) {
+    if (!aiApiKey) {
         const error = new Error(
-            "OpenAI API key is not configured (OPENAI_API_KEY)"
+            "DeepSeek API key is not configured (DEEPSEEK_API_KEY)"
         );
         error.statusCode = 500;
         throw error;
@@ -134,8 +134,8 @@ const chatWithAssistant = async ({ messages, isStaff }) => {
     let currentMessages = messagesPayload;
 
     for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
-        const data = await callOpenAI({
-            model: openaiModel,
+        const data = await callDeepSeek({
+            model: aiModel,
             messages: currentMessages,
             tools,
             tool_choice: "auto",
@@ -144,7 +144,7 @@ const chatWithAssistant = async ({ messages, isStaff }) => {
         const message = data.choices?.[0]?.message;
 
         if (!message) {
-            const error = new Error("OpenAI returned an empty response");
+            const error = new Error("DeepSeek returned an empty response");
             error.statusCode = 502;
             throw error;
         }
