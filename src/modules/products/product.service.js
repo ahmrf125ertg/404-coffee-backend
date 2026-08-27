@@ -1,39 +1,88 @@
 const prisma = require("../../lib/prisma");
+const { parsePagination } = require("../../utils/pagination");
 
-// ============================================================
-// Get all products
-// ============================================================
-
-const getProducts = async () => {
-  return prisma.product.findMany({
-    orderBy: {
-      createdAt: "desc",
-    },
-
+const PRODUCT_INCLUDE = {
+  types: {
     include: {
-      types: {
-        include: {
-          ingredients: {
-            include: {
-              rawMaterial: true,
-            },
-          },
-        },
+      ingredients: {
+        include: { rawMaterial: true },
       },
-
-      sizes: {
-        include: {
-          ingredients: {
-            include: {
-              rawMaterial: true,
-            },
-          },
-        },
-      },
-
-      addons: true,
     },
-  });
+  },
+  sizes: {
+    include: {
+      ingredients: {
+        include: { rawMaterial: true },
+      },
+    },
+  },
+  addons: true,
+};
+
+// ============================================================
+// Get all products (with filtering, search, pagination)
+// ============================================================
+
+const getProducts = async (filters = {}) => {
+  const { page, pageSize, skip, take } = parsePagination(filters);
+  const { category, minPrice, maxPrice, search, isActive, menu } = filters;
+
+  const where = {};
+
+  if (category) {
+    where.category = category;
+  }
+
+  if (isActive !== undefined) {
+    where.isActive = isActive === "true" || isActive === true;
+  }
+
+  if (menu === "true" || menu === true) {
+    where.isActive = true;
+  }
+
+  if (search) {
+    where.name = { contains: search, mode: "insensitive" };
+  }
+
+  if (minPrice !== undefined || maxPrice !== undefined) {
+    where.sizes = {};
+    const priceFilter = {};
+    if (minPrice !== undefined) {
+      const min = Number(minPrice);
+      if (Number.isFinite(min) && min >= 0) {
+        priceFilter.gte = min;
+      }
+    }
+    if (maxPrice !== undefined) {
+      const max = Number(maxPrice);
+      if (Number.isFinite(max) && max >= 0) {
+        priceFilter.lte = max;
+      }
+    }
+    if (Object.keys(priceFilter).length > 0) {
+      where.sizes.finalPrice = priceFilter;
+    }
+  }
+
+  const [products, total] = await Promise.all([
+    prisma.product.findMany({
+      where,
+      include: PRODUCT_INCLUDE,
+      orderBy: { createdAt: "desc" },
+      skip,
+      take,
+    }),
+    prisma.product.count({ where }),
+  ]);
+
+  return {
+    items: products,
+    total,
+    page,
+    pageSize,
+    totalPages: Math.ceil(total / pageSize),
+  };
 };
 
 // ============================================================
@@ -43,34 +92,15 @@ const getProducts = async () => {
 const getProductById = async (id) => {
   const productId = Number(id);
 
+  if (!Number.isInteger(productId) || productId <= 0) {
+    const error = new Error("Invalid product ID");
+    error.statusCode = 400;
+    throw error;
+  }
+
   const product = await prisma.product.findUnique({
-    where: {
-      id: productId,
-    },
-
-    include: {
-      types: {
-        include: {
-          ingredients: {
-            include: {
-              rawMaterial: true,
-            },
-          },
-        },
-      },
-
-      sizes: {
-        include: {
-          ingredients: {
-            include: {
-              rawMaterial: true,
-            },
-          },
-        },
-      },
-
-      addons: true,
-    },
+    where: { id: productId },
+    include: PRODUCT_INCLUDE,
   });
 
   if (!product) {
@@ -86,18 +116,14 @@ const getProductById = async (id) => {
 // Create product
 // ============================================================
 
-const createProduct = async ({ name, description, image }) => {
+const createProduct = async ({ name, description, image, category, isActive }) => {
   if (!name) {
     const error = new Error("Product name is required");
     error.statusCode = 400;
     throw error;
   }
 
-  const existingProduct = await prisma.product.findUnique({
-    where: {
-      name,
-    },
-  });
+  const existingProduct = await prisma.product.findUnique({ where: { name } });
 
   if (existingProduct) {
     const error = new Error("Product already exists");
@@ -110,13 +136,10 @@ const createProduct = async ({ name, description, image }) => {
       name,
       description: description || null,
       image: image || null,
+      category: category || null,
+      ...(isActive !== undefined && { isActive: Boolean(isActive) }),
     },
-
-    include: {
-      types: true,
-      sizes: true,
-      addons: true,
-    },
+    include: { types: true, sizes: true, addons: true },
   });
 };
 
@@ -128,9 +151,7 @@ const updateProduct = async (id, data) => {
   const productId = Number(id);
 
   const existingProduct = await prisma.product.findUnique({
-    where: {
-      id: productId,
-    },
+    where: { id: productId },
   });
 
   if (!existingProduct) {
@@ -139,28 +160,18 @@ const updateProduct = async (id, data) => {
     throw error;
   }
 
-  const { name, description, image } = data;
+  const { name, description, image, category, isActive } = data;
 
   return prisma.product.update({
-    where: {
-      id: productId,
-    },
-
+    where: { id: productId },
     data: {
       ...(name !== undefined && { name }),
-      ...(description !== undefined && {
-        description: description || null,
-      }),
-      ...(image !== undefined && {
-        image: image || null,
-      }),
+      ...(description !== undefined && { description: description || null }),
+      ...(image !== undefined && { image: image || null }),
+      ...(category !== undefined && { category: category || null }),
+      ...(isActive !== undefined && { isActive: Boolean(isActive) }),
     },
-
-    include: {
-      types: true,
-      sizes: true,
-      addons: true,
-    },
+    include: { types: true, sizes: true, addons: true },
   });
 };
 

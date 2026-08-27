@@ -4,11 +4,17 @@ const { logAudit } = require("../../utils/audit");
 // Get all products
 const getProducts = async (req, res, next) => {
     try {
-        const products = await productService.getProducts();
+        const result = await productService.getProducts(req.query);
 
         res.status(200).json({
             success: true,
-            data: products,
+            data: result.items,
+            pagination: {
+                page: result.page,
+                pageSize: result.pageSize,
+                total: result.total,
+                totalPages: result.totalPages,
+            },
         });
     } catch (error) {
         next(error);

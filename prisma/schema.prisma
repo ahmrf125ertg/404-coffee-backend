@@ -88,6 +88,8 @@ model Product {
   name        String  @unique
   description String?
   image       String?
+  category    String?
+  isActive    Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -97,7 +99,10 @@ model Product {
   addons     ProductAddon[]
   saleItems  SaleItem[]
   orderItems OrderItem[]
+  reviews    Review[]
 
+  @@index([category])
+  @@index([isActive])
   @@map("products")
 }
 
@@ -211,8 +216,9 @@ model Customer {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  sales  Sale[]
-  orders Order[]
+  sales   Sale[]
+  orders  Order[]
+  reviews Review[]
 
   @@index([name])
   @@map("customers")
@@ -373,14 +379,24 @@ enum OrderStatus {
   CANCELLED
 }
 
+enum OrderItemStatus {
+  PENDING
+  PREPARING
+  READY
+  CANCELLED
+}
+
 model Order {
-  id Int @id @default(autoincrement())
+  id           Int      @id @default(autoincrement())
+  orderNumber  String   @unique
+  customerName String?
 
   customerId Int?
   delegateId Int?
 
-  orderType OrderType   @default(DINE_IN)
-  status    OrderStatus @default(PENDING)
+  orderType    OrderType   @default(DINE_IN)
+  status       OrderStatus @default(PENDING)
+  tableNumber  String?
 
   phone String?
 
@@ -395,7 +411,8 @@ model Order {
   customer Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
   delegate Delegate? @relation(fields: [delegateId], references: [id], onDelete: SetNull)
 
-  items OrderItem[]
+  items    OrderItem[]
+  reviews  Review[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -406,6 +423,7 @@ model Order {
   @@index([status])
   @@index([paymentMethod])
   @@index([createdAt])
+  @@index([orderNumber])
   @@map("orders")
 }
 
@@ -419,6 +437,7 @@ model OrderItem {
   quantity   Decimal 
   unitPrice  Decimal 
   totalPrice Decimal 
+  status     OrderItemStatus @default(PENDING)
 
   order       Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product     Product     @relation(fields: [productId], references: [id])
@@ -430,6 +449,7 @@ model OrderItem {
   @@index([orderId])
   @@index([productId])
   @@index([productSizeId])
+  @@index([status])
   @@map("order_items")
 }
 
@@ -626,4 +646,29 @@ model Setting {
   updatedAt DateTime @updatedAt
 
   @@map("settings")
+}
+
+// ============================================================
+// Reviews
+// ============================================================
+
+model Review {
+  id         Int     @id @default(autoincrement())
+  customerId Int
+  orderId    Int?
+  productId  Int
+  rating     Int
+  comment    String?
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  order    Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([customerId])
+  @@index([orderId])
+  @@index([productId])
+  @@index([rating])
+  @@map("reviews")
 }

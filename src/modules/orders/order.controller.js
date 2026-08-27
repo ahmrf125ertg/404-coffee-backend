@@ -99,13 +99,13 @@ const updateOrder = async (req, res, next) => {
 // Delete order
 // DELETE /api/orders/:id
 // ============================================================
+// Delete order
+// DELETE /api/orders/:id
+// ============================================================
 
 const deleteOrder = async (req, res, next) => {
     try {
-        const order = await orderService.deleteOrder(
-            req.params.id
-        );
-
+        const order = await orderService.deleteOrder(req.params.id);
 
         await logAudit(req, "orders", "delete_order", "Order deleted successfully");
         return res.status(200).json({
@@ -118,10 +118,54 @@ const deleteOrder = async (req, res, next) => {
     }
 };
 
+// ============================================================
+// Get order tracking
+// GET /api/orders/:id/tracking
+// ============================================================
+
+const getOrderTracking = async (req, res, next) => {
+    try {
+        const tracking = await orderService.getOrderTracking(req.params.id);
+
+        return res.status(200).json({
+            success: true,
+            data: tracking,
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// ============================================================
+// Update order item status
+// PATCH /api/orders/:id/items/:itemId/status
+// ============================================================
+
+const updateOrderItemStatus = async (req, res, next) => {
+    try {
+        const result = await orderService.updateOrderItemStatus(
+            req.params.id,
+            req.params.itemId,
+            req.body
+        );
+
+        await logAudit(req, "orders", "update_item_status", `Order item ${req.params.itemId} status updated`);
+        return res.status(200).json({
+            success: true,
+            message: "Order item status updated",
+            data: result,
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 module.exports = {
     createOrder,
     getOrders,
     getOrderById,
     updateOrder,
     deleteOrder,
+    getOrderTracking,
+    updateOrderItemStatus,
 };

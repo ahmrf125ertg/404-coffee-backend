@@ -132,6 +132,31 @@ const validateOrderEnums = ({
 };
 
 // ============================================================
+// Order number generation
+// ============================================================
+
+const generateOrderNumber = async () => {
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0, 10).replace(/-/g, "");
+    const prefix = `ORD-${dateStr}-`;
+
+    const lastOrder = await prisma.order.findFirst({
+        where: {
+            orderNumber: { startsWith: prefix },
+        },
+        orderBy: { orderNumber: "desc" },
+    });
+
+    let seq = 1;
+    if (lastOrder) {
+        const lastSeq = parseInt(lastOrder.orderNumber.slice(-4), 10);
+        seq = lastSeq + 1;
+    }
+
+    return `${prefix}${String(seq).padStart(4, "0")}`;
+};
+
+// ============================================================
 // Create order
 // ============================================================
 
@@ -140,6 +165,9 @@ const createOrder = async (data) => {
         customerId,
         delegateId,
         orderType = "DINE_IN",
+        tableNumber,
+        customerName,
+        customerPhone,
         phone,
         discount = 0,
         paymentMethod = "CASH",
@@ -150,16 +178,48 @@ const createOrder = async (data) => {
     validateOrderEnums({ orderType, paymentMethod });
 
     // --------------------------------------------------------
-    // Validate customer
+    // Validate orderType-specific fields
     // --------------------------------------------------------
 
-    if (customerId !== undefined && customerId !== null) {
-        const customer = await prisma.customer.findUnique({
-            where: {
-                id: Number(customerId),
-            },
+    if (orderType === "DINE_IN") {
+        if (!tableNumber) {
+            throw httpError("tableNumber is required for DINE_IN orders");
+        }
+    }
+
+    if (orderType === "ONLINE" || orderType === "TAKEAWAY") {
+        if (!customerId && !customerName) {
+            throw httpError("customerName or customerId is required for ONLINE/TAKEAWAY orders");
+        }
+    }
+
+    // --------------------------------------------------------
+    // Validate or auto-create customer
+    // --------------------------------------------------------
+
+    let resolvedCustomerId = customerId ? Number(customerId) : null;
+
+    if (!resolvedCustomerId && customerName && customerPhone) {
+        let customer = await prisma.customer.findUnique({
+            where: { phone: customerPhone.trim() },
         });
 
+        if (!customer) {
+            customer = await prisma.customer.create({
+                data: {
+                    name: customerName.trim(),
+                    phone: customerPhone.trim(),
+                },
+            });
+        }
+
+        resolvedCustomerId = customer.id;
+    }
+
+    if (resolvedCustomerId) {
+        const customer = await prisma.customer.findUnique({
+            where: { id: resolvedCustomerId },
+        });
         if (!customer) {
             throw httpError("Customer not found", 404);
         }
@@ -171,11 +231,8 @@ const createOrder = async (data) => {
 
     if (delegateId !== undefined && delegateId !== null) {
         const delegate = await prisma.delegate.findUnique({
-            where: {
-                id: Number(delegateId),
-            },
+            where: { id: Number(delegateId) },
         });
-
         if (!delegate) {
             throw httpError("Delegate not found", 404);
         }
@@ -185,8 +242,7 @@ const createOrder = async (data) => {
     // Validate items + calculate subtotal
     // --------------------------------------------------------
 
-    const { orderItems, subtotal } =
-        await validateAndPrepareItems(items);
+    const { orderItems, subtotal } = await validateAndPrepareItems(items);
 
     // --------------------------------------------------------
     // Calculate total
@@ -205,36 +261,31 @@ const createOrder = async (data) => {
     const total = subtotal - discountValue;
 
     // --------------------------------------------------------
+    // Generate order number
+    // --------------------------------------------------------
+
+    const orderNumber = await generateOrderNumber();
+
+    // --------------------------------------------------------
     // Create order
     // --------------------------------------------------------
 
     const order = await prisma.order.create({
         data: {
-            customerId:
-                customerId !== undefined && customerId !== null
-                    ? Number(customerId)
-                    : null,
-
-            delegateId:
-                delegateId !== undefined && delegateId !== null
-                    ? Number(delegateId)
-                    : null,
-
+            orderNumber,
+            customerName: customerName || null,
+            customerId: resolvedCustomerId,
+            delegateId: delegateId ? Number(delegateId) : null,
             orderType,
-            phone: phone || null,
-
+            tableNumber: tableNumber || null,
+            phone: phone || customerPhone || null,
             subtotal,
             discount: discountValue,
             total,
-
             paymentMethod,
             notes: notes || null,
-
-            items: {
-                create: orderItems,
-            },
+            items: { create: orderItems },
         },
-
         include: getOrderInclude,
     });
 
@@ -348,6 +399,8 @@ const updateOrder = async (id, data) => {
         customerId,
         delegateId,
         orderType,
+        tableNumber,
+        customerName,
         phone,
         discount,
         paymentMethod,
@@ -364,11 +417,8 @@ const updateOrder = async (id, data) => {
 
     if (customerId !== undefined && customerId !== null) {
         const customer = await prisma.customer.findUnique({
-            where: {
-                id: Number(customerId),
-            },
+            where: { id: Number(customerId) },
         });
-
         if (!customer) {
             throw httpError("Customer not found", 404);
         }
@@ -380,11 +430,8 @@ const updateOrder = async (id, data) => {
 
     if (delegateId !== undefined && delegateId !== null) {
         const delegate = await prisma.delegate.findUnique({
-            where: {
-                id: Number(delegateId),
-            },
+            where: { id: Number(delegateId) },
         });
-
         if (!delegate) {
             throw httpError("Delegate not found", 404);
         }
@@ -397,17 +444,23 @@ const updateOrder = async (id, data) => {
     const updateData = {};
 
     if (customerId !== undefined) {
-        updateData.customerId =
-            customerId === null ? null : Number(customerId);
+        updateData.customerId = customerId === null ? null : Number(customerId);
     }
 
     if (delegateId !== undefined) {
-        updateData.delegateId =
-            delegateId === null ? null : Number(delegateId);
+        updateData.delegateId = delegateId === null ? null : Number(delegateId);
     }
 
     if (orderType !== undefined) {
         updateData.orderType = orderType;
+    }
+
+    if (tableNumber !== undefined) {
+        updateData.tableNumber = tableNumber || null;
+    }
+
+    if (customerName !== undefined) {
+        updateData.customerName = customerName || null;
     }
 
     if (phone !== undefined) {
@@ -539,9 +592,7 @@ const deleteOrder = async (id) => {
     }
 
     const existingOrder = await prisma.order.findUnique({
-        where: {
-            id: orderId,
-        },
+        where: { id: orderId },
     });
 
     if (!existingOrder) {
@@ -549,14 +600,146 @@ const deleteOrder = async (id) => {
     }
 
     const order = await prisma.order.delete({
-        where: {
-            id: orderId,
-        },
-
+        where: { id: orderId },
         include: getOrderInclude,
     });
 
     return order;
+};
+
+// ============================================================
+// Get order tracking
+// ============================================================
+
+const getOrderTracking = async (id) => {
+    const orderId = Number(id);
+
+    if (!Number.isInteger(orderId) || orderId <= 0) {
+        throw httpError("Invalid order ID");
+    }
+
+    const order = await prisma.order.findUnique({
+        where: { id: orderId },
+        include: {
+            items: {
+                include: {
+                    product: { select: { id: true, name: true } },
+                    productSize: { select: { id: true, name: true, typeName: true } },
+                },
+            },
+        },
+    });
+
+    if (!order) {
+        throw httpError("Order not found", 404);
+    }
+
+    const totalItems = order.items.length;
+    const readyItems = order.items.filter((i) => i.status === "READY");
+    const pendingItems = order.items.filter((i) => i.status !== "READY" && i.status !== "CANCELLED");
+
+    return {
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        status: order.status,
+        orderType: order.orderType,
+        tableNumber: order.tableNumber,
+        total: Number(order.total),
+        totalItems,
+        readyCount: readyItems.length,
+        pendingCount: pendingItems.length,
+        readyItems: readyItems.map((i) => ({
+            id: i.id,
+            productName: i.product.name,
+            sizeName: i.productSize.name,
+            quantity: Number(i.quantity),
+            status: i.status,
+        })),
+        pendingItems: pendingItems.map((i) => ({
+            id: i.id,
+            productName: i.product.name,
+            sizeName: i.productSize.name,
+            quantity: Number(i.quantity),
+            status: i.status,
+        })),
+    };
+};
+
+// ============================================================
+// Update order item status
+// ============================================================
+
+const ALLOWED_ITEM_STATUSES = ["PENDING", "PREPARING", "READY", "CANCELLED"];
+
+const updateOrderItemStatus = async (orderId, itemId, data) => {
+    const orderIdNum = Number(orderId);
+    const itemIdNum = Number(itemId);
+    const { status } = data;
+
+    if (!Number.isInteger(orderIdNum) || orderIdNum <= 0) {
+        throw httpError("Invalid order ID");
+    }
+
+    if (!Number.isInteger(itemIdNum) || itemIdNum <= 0) {
+        throw httpError("Invalid item ID");
+    }
+
+    if (!status || !ALLOWED_ITEM_STATUSES.includes(status)) {
+        throw httpError(`Invalid status. Allowed: ${ALLOWED_ITEM_STATUSES.join(", ")}`);
+    }
+
+    const order = await prisma.order.findUnique({
+        where: { id: orderIdNum },
+    });
+
+    if (!order) {
+        throw httpError("Order not found", 404);
+    }
+
+    const orderItem = await prisma.orderItem.findFirst({
+        where: { id: itemIdNum, orderId: orderIdNum },
+    });
+
+    if (!orderItem) {
+        throw httpError("Order item not found", 404);
+    }
+
+    const updatedItem = await prisma.orderItem.update({
+        where: { id: itemIdNum },
+        data: { status },
+        include: {
+            product: { select: { id: true, name: true } },
+            productSize: { select: { id: true, name: true } },
+        },
+    });
+
+    // Auto-update order status based on item statuses
+    const allItems = await prisma.orderItem.findMany({
+        where: { orderId: orderIdNum },
+    });
+
+    const activeItems = allItems.filter((i) => i.status !== "CANCELLED");
+    const allReady = activeItems.length > 0 && activeItems.every((i) => i.status === "READY");
+    const anyPreparing = activeItems.some((i) => i.status === "PREPARING");
+
+    let newOrderStatus = order.status;
+    if (allReady) {
+        newOrderStatus = "READY";
+    } else if (anyPreparing) {
+        newOrderStatus = "PREPARING";
+    }
+
+    if (newOrderStatus !== order.status) {
+        await prisma.order.update({
+            where: { id: orderIdNum },
+            data: { status: newOrderStatus },
+        });
+    }
+
+    return {
+        item: updatedItem,
+        orderStatus: newOrderStatus,
+    };
 };
 
 module.exports = {
@@ -565,4 +748,6 @@ module.exports = {
     getOrderById,
     updateOrder,
     deleteOrder,
+    getOrderTracking,
+    updateOrderItemStatus,
 };

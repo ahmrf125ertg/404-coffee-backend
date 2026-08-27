@@ -50,4 +50,20 @@ router.delete(
   orderController.deleteOrder
 );
 
+// Order tracking
+router.get(
+  "/:id/tracking",
+  authMiddleware,
+  requirePermission("orders", "view_orders"),
+  orderController.getOrderTracking
+);
+
+// Update order item status
+router.patch(
+  "/:id/items/:itemId/status",
+  authMiddleware,
+  requirePermission("orders", "edit_order"),
+  orderController.updateOrderItemStatus
+);
+
 module.exports = router;

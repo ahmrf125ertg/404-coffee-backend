@@ -2,6 +2,9 @@ const validateOrder = (req, res, next) => {
     const {
         customerId,
         orderType,
+        tableNumber,
+        customerName,
+        customerPhone,
         phone,
         discount,
         paymentMethod,
@@ -70,6 +73,27 @@ const validateOrder = (req, res, next) => {
                 message: "Invalid customerId",
             });
         }
+    }
+
+    if (tableNumber !== undefined && tableNumber !== null && typeof tableNumber !== "string") {
+        return res.status(400).json({
+            success: false,
+            message: "tableNumber must be a string",
+        });
+    }
+
+    if (customerName !== undefined && customerName !== null && typeof customerName !== "string") {
+        return res.status(400).json({
+            success: false,
+            message: "customerName must be a string",
+        });
+    }
+
+    if (customerPhone !== undefined && customerPhone !== null && typeof customerPhone !== "string") {
+        return res.status(400).json({
+            success: false,
+            message: "customerPhone must be a string",
+        });
     }
 
     if (phone !== undefined && phone !== null && typeof phone !== "string") {
