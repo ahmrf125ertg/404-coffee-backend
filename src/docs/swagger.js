@@ -792,19 +792,6 @@ const miscPaths = {
       responses: { 200: listResponse, ...errorResponses },
     },
   },
-  "/api/backup/download": {
-    get: {
-      tags: ["Backup"],
-      summary: "تحميل نسخة احتياطية متسقة من الداتابيز (ملف SQLite)",
-      security: [{ bearerAuth: [] }],
-      responses: {
-        200: {
-          description: "ملف الداتابيز (application/octet-stream)",
-        },
-        ...errorResponses,
-      },
-    },
-  },
 };
 
 const chatPaths = {
@@ -868,7 +855,7 @@ const swaggerSpec = {
     title: "404 Coffee API",
     version: "2.0.0",
     description:
-      "نظام إدارة كافيه — RBAC (OWNER/MANAGER/CASHIER/DELEGATE)، SQLite WAL، توثيق كامل لكل الـ endpoints.\n\nكل الـ endpoints ماعدا `/api/auth/login` و `/api/health` تتطلب `Authorization: Bearer <JWT>`.",
+      "نظام إدارة كافيه — RBAC (OWNER/MANAGER/CASHIER/DELEGATE)، PostgreSQL، توثيق كامل لكل الـ endpoints.\n\nكل الـ endpoints ماعدا `/api/auth/login` و `/api/health` تتطلب `Authorization: Bearer <JWT>`.",
   },
   servers: [{ url: "http://localhost:5000" }],
   components: {

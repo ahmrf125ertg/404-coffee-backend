@@ -12,7 +12,7 @@ const getSales = async (reqQuery = {}) => {
     const where = {};
 
     // Search by customer name or phone
-    // ملاحظة SQLite: الـ contains حساسية ASCII case-insensitive مدمجة (LIKE)
+    // ملاحظة PostgreSQL: الـ contains حساسية ASCII case-insensitive
     if (search && search.trim()) {
         where.customer = {
             OR: [

@@ -16,7 +16,7 @@ const errorHandler = require("./middlewares/error.middleware");
 
 const authRoutes = require("./modules/auth/auth.routes");
 const auditLogRoutes = require("./modules/audit-logs/audit-log.routes");
-const backupRoutes = require("./modules/backup/backup.routes");
+
 const cashDrawerShiftRoutes = require("./modules/cash-drawer-shifts/cash-drawer-shift.routes");
 const chatRoutes = require("./modules/chat/chat.routes");
 const customerRoutes = require("./modules/customers/customer.routes");
@@ -97,7 +97,7 @@ app.get("/api/docs.json", (req, res) => {
 // ============================================================
 app.use("/api/auth", authRoutes);
 app.use("/api/audit-logs", auditLogRoutes);
-app.use("/api/backup", backupRoutes);
+
 app.use("/api/cash-drawer-shifts", cashDrawerShiftRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/customers", customerRoutes);
