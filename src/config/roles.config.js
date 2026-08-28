@@ -92,7 +92,6 @@ const PAGES = {
   audit_log: ["view_audit_log"],
   settings: ["view_settings", "update_settings"],
   warnings: ["view_warnings"],
-  reviews: ["view_reviews", "create_review", "delete_review"],
   financial_reports: [
     "view_sales_report",
     "view_profit_report",
@@ -136,7 +135,6 @@ const ROLE_PERMISSIONS = {
     suppliers: ["view_suppliers"],
     delegates: ["view_delegates"],
     warnings: ["view_warnings"],
-    reviews: ["view_reviews", "create_review"],
   },
 
   // المندوب — الطلبات بس

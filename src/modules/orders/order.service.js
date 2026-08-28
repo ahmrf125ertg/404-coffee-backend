@@ -100,7 +100,7 @@ const validateAndPrepareItems = async (items) => {
     };
 };
 
-const ALLOWED_ORDER_TYPES = ["DINE_IN", "TAKEAWAY", "ONLINE"];
+const ALLOWED_ORDER_TYPES = ["tables", "online"];
 const ALLOWED_STATUSES = [
     "PENDING",
     "PREPARING",
@@ -135,25 +135,38 @@ const validateOrderEnums = ({
 // Order number generation
 // ============================================================
 
-const generateOrderNumber = async () => {
-    const now = new Date();
-    const dateStr = now.toISOString().slice(0, 10).replace(/-/g, "");
-    const prefix = `ORD-${dateStr}-`;
+const generateOrderNumber = async (orderType, tableNumber) => {
+    if (orderType === "online") {
+        const lastOrder = await prisma.order.findFirst({
+            where: { orderNumber: { startsWith: "A-" } },
+            orderBy: { orderNumber: "desc" },
+        });
+
+        let seq = 1;
+        if (lastOrder) {
+            const lastSeq = parseInt(lastOrder.orderNumber.slice(2), 10);
+            seq = lastSeq + 1;
+        }
+
+        return `A-${String(seq).padStart(4, "0")}`;
+    }
+
+    // tables order: T{table}-{seq}
+    const tableNum = tableNumber || "1";
+    const prefix = `T${tableNum}-`;
 
     const lastOrder = await prisma.order.findFirst({
-        where: {
-            orderNumber: { startsWith: prefix },
-        },
+        where: { orderNumber: { startsWith: prefix } },
         orderBy: { orderNumber: "desc" },
     });
 
     let seq = 1;
     if (lastOrder) {
-        const lastSeq = parseInt(lastOrder.orderNumber.slice(-4), 10);
+        const lastSeq = parseInt(lastOrder.orderNumber.split("-")[1], 10);
         seq = lastSeq + 1;
     }
 
-    return `${prefix}${String(seq).padStart(4, "0")}`;
+    return `${prefix}${seq}`;
 };
 
 // ============================================================
@@ -164,8 +177,8 @@ const createOrder = async (data) => {
     const {
         customerId,
         delegateId,
-        orderType = "DINE_IN",
-        tableNumber,
+        orderType = "tables",
+        table: tableNumber,
         customerName,
         customerPhone,
         phone,
@@ -181,15 +194,15 @@ const createOrder = async (data) => {
     // Validate orderType-specific fields
     // --------------------------------------------------------
 
-    if (orderType === "DINE_IN") {
+    if (orderType === "tables") {
         if (!tableNumber) {
-            throw httpError("tableNumber is required for DINE_IN orders");
+            throw httpError("table is required for tables orders");
         }
     }
 
-    if (orderType === "ONLINE" || orderType === "TAKEAWAY") {
+    if (orderType === "online") {
         if (!customerId && !customerName) {
-            throw httpError("customerName or customerId is required for ONLINE/TAKEAWAY orders");
+            throw httpError("customerName or customerId is required for online orders");
         }
     }
 
@@ -264,7 +277,7 @@ const createOrder = async (data) => {
     // Generate order number
     // --------------------------------------------------------
 
-    const orderNumber = await generateOrderNumber();
+    const orderNumber = await generateOrderNumber(orderType, tableNumber);
 
     // --------------------------------------------------------
     // Create order
@@ -277,7 +290,7 @@ const createOrder = async (data) => {
             customerId: resolvedCustomerId,
             delegateId: delegateId ? Number(delegateId) : null,
             orderType,
-            tableNumber: tableNumber || null,
+            table: tableNumber || null,
             phone: phone || customerPhone || null,
             subtotal,
             discount: discountValue,
@@ -399,7 +412,7 @@ const updateOrder = async (id, data) => {
         customerId,
         delegateId,
         orderType,
-        tableNumber,
+        table: tableNumber,
         customerName,
         phone,
         discount,
@@ -456,7 +469,7 @@ const updateOrder = async (id, data) => {
     }
 
     if (tableNumber !== undefined) {
-        updateData.tableNumber = tableNumber || null;
+        updateData.table = tableNumber || null;
     }
 
     if (customerName !== undefined) {
@@ -643,7 +656,7 @@ const getOrderTracking = async (id) => {
         orderNumber: order.orderNumber,
         status: order.status,
         orderType: order.orderType,
-        tableNumber: order.tableNumber,
+        table: order.table,
         total: Number(order.total),
         totalItems,
         readyCount: readyItems.length,

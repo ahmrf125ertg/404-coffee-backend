@@ -116,10 +116,38 @@ const deleteCustomer = async (req, res, next) => {
     }
 };
 
+// ============================================================
+// Get customer orders
+// ============================================================
+
+const getCustomerOrders = async (req, res, next) => {
+    try {
+        const { page, pageSize } = parsePagination(req.query);
+        const { items, total } = await customerService.getCustomerOrders(
+            req.params.id,
+            req.query
+        );
+
+        res.status(200).json({
+            success: true,
+            data: items,
+            pagination: {
+                page,
+                pageSize,
+                total,
+                totalPages: Math.ceil(total / pageSize),
+            },
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 module.exports = {
     getCustomers,
     getCustomerById,
     createCustomer,
     updateCustomer,
     deleteCustomer,
+    getCustomerOrders,
 };

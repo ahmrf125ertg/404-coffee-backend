@@ -83,6 +83,9 @@ const createCustomer = async (data) => {
         image,
         city,
         address,
+        orderType,
+        social,
+        feedback,
         loyaltyPoints = 0,
         loyaltyLevel = "REGULAR",
         notes,
@@ -134,6 +137,9 @@ const createCustomer = async (data) => {
             image: image?.trim() || null,
             city: city?.trim() || null,
             address: address?.trim() || null,
+            orderType: orderType?.trim() || null,
+            social: social || null,
+            feedback: feedback?.trim() || null,
             loyaltyPoints: parsedLoyaltyPoints,
             loyaltyLevel: loyaltyLevel?.trim() || "REGULAR",
             notes: notes?.trim() || null,
@@ -174,6 +180,9 @@ const updateCustomer = async (id, data) => {
         image,
         city,
         address,
+        orderType,
+        social,
+        feedback,
         loyaltyPoints,
         loyaltyLevel,
         notes,
@@ -270,6 +279,18 @@ const updateCustomer = async (id, data) => {
             ...(notes !== undefined && {
                 notes: notes?.trim() || null,
             }),
+
+            ...(orderType !== undefined && {
+                orderType: orderType?.trim() || null,
+            }),
+
+            ...(social !== undefined && {
+                social: social || null,
+            }),
+
+            ...(feedback !== undefined && {
+                feedback: feedback?.trim() || null,
+            }),
         },
     });
 };
@@ -306,10 +327,56 @@ const deleteCustomer = async (id) => {
     });
 };
 
+// ============================================================
+// Get customer orders
+// ============================================================
+
+const getCustomerOrders = async (customerId, filters = {}) => {
+    const id = Number(customerId);
+
+    if (!Number.isInteger(id) || id <= 0) {
+        const error = new Error("Invalid customer ID");
+        error.statusCode = 400;
+        throw error;
+    }
+
+    const customer = await prisma.customer.findUnique({ where: { id } });
+    if (!customer) {
+        const error = new Error("Customer not found");
+        error.statusCode = 404;
+        throw error;
+    }
+
+    const { skip, take } = parsePagination(filters);
+
+    const where = { customerId: id };
+
+    const [orders, total] = await Promise.all([
+        prisma.order.findMany({
+            where,
+            include: {
+                items: {
+                    include: {
+                        product: { select: { id: true, name: true } },
+                        productSize: { select: { id: true, name: true } },
+                    },
+                },
+            },
+            orderBy: { createdAt: "desc" },
+            skip,
+            take,
+        }),
+        prisma.order.count({ where }),
+    ]);
+
+    return { items: orders, total };
+};
+
 module.exports = {
     getCustomers,
     getCustomerById,
     createCustomer,
     updateCustomer,
     deleteCustomer,
+    getCustomerOrders,
 };

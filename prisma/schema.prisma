@@ -99,7 +99,6 @@ model Product {
   addons     ProductAddon[]
   saleItems  SaleItem[]
   orderItems OrderItem[]
-  reviews    Review[]
 
   @@index([category])
   @@index([isActive])
@@ -145,6 +144,7 @@ model ProductSize {
   productId Int
   typeName  String
   name      String
+  isActive  Boolean @default(true)
 
   basePrice  Decimal 
   finalPrice Decimal 
@@ -209,6 +209,9 @@ model Customer {
   image         String?
   city          String?
   address       String?
+  orderType     String?
+  social        Json?
+  feedback      String?
   loyaltyPoints Int     @default(0)
   loyaltyLevel  String  @default("REGULAR")
   notes         String?
@@ -218,7 +221,6 @@ model Customer {
 
   sales   Sale[]
   orders  Order[]
-  reviews Review[]
 
   @@index([name])
   @@map("customers")
@@ -366,9 +368,8 @@ model SaleItem {
 // ============================================================
 
 enum OrderType {
-  DINE_IN
-  TAKEAWAY
-  ONLINE
+  tables
+  online
 }
 
 enum OrderStatus {
@@ -394,9 +395,9 @@ model Order {
   customerId Int?
   delegateId Int?
 
-  orderType    OrderType   @default(DINE_IN)
+  orderType    OrderType   @default(tables)
   status       OrderStatus @default(PENDING)
-  tableNumber  String?
+  table        String?
 
   phone String?
 
@@ -412,7 +413,6 @@ model Order {
   delegate Delegate? @relation(fields: [delegateId], references: [id], onDelete: SetNull)
 
   items    OrderItem[]
-  reviews  Review[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -646,29 +646,4 @@ model Setting {
   updatedAt DateTime @updatedAt
 
   @@map("settings")
-}
-
-// ============================================================
-// Reviews
-// ============================================================
-
-model Review {
-  id         Int     @id @default(autoincrement())
-  customerId Int
-  orderId    Int?
-  productId  Int
-  rating     Int
-  comment    String?
-
-  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  order    Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
-  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-
-  createdAt DateTime @default(now())
-
-  @@index([customerId])
-  @@index([orderId])
-  @@index([productId])
-  @@index([rating])
-  @@map("reviews")
 }

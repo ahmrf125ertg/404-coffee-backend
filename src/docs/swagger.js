@@ -542,7 +542,7 @@ const ordersPaths = {
               properties: {
                 customerId: { type: "integer" },
                 delegateId: { type: "integer" },
-                orderType: { type: "string", enum: ["DINE_IN", "TAKEAWAY", "ONLINE"] },
+                orderType: { type: "string", enum: ["tables", "online"] },
                 status: { type: "string", enum: ["PENDING", "PREPARING", "READY", "COMPLETED", "CANCELLED"] },
                 phone: { type: "string" },
                 paymentMethod: { type: "string", enum: ["CASH", "CARD", "WALLET"] },

@@ -4,6 +4,11 @@ const { logAudit } = require("../../utils/audit");
 
 const { parsePagination } = require("../../utils/pagination");
 
+const {
+    emitOrderCreated,
+    emitOrderItemUpdated,
+} = require("../../websocket/socket.events");
+
 // ============================================================
 // Create order
 // POST /api/orders
@@ -13,6 +18,7 @@ const createOrder = async (req, res, next) => {
     try {
         const order = await orderService.createOrder(req.body);
 
+        emitOrderCreated(order);
 
         await logAudit(req, "orders", "create_order", "Order created successfully");
         return res.status(201).json({
@@ -148,6 +154,13 @@ const updateOrderItemStatus = async (req, res, next) => {
             req.params.itemId,
             req.body
         );
+
+        emitOrderItemUpdated({
+            orderId: Number(req.params.id),
+            itemId: Number(req.params.itemId),
+            status: result.item.status,
+            orderStatus: result.orderStatus,
+        });
 
         await logAudit(req, "orders", "update_item_status", `Order item ${req.params.itemId} status updated`);
         return res.status(200).json({

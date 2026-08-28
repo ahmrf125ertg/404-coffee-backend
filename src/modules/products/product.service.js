@@ -19,6 +19,28 @@ const PRODUCT_INCLUDE = {
   addons: true,
 };
 
+// Transform flat types+sizes into nested variants[] format
+// Frontend expects: variants[{ type, sizes[{ name, price }] }]
+const toVariants = (product) => {
+  const sizes = product.sizes || [];
+  const typeNames = [...new Set(sizes.map((s) => s.typeName))];
+
+  const variants = typeNames.map((typeName) => ({
+    type: typeName,
+    sizes: sizes
+      .filter((s) => s.typeName === typeName)
+      .map((s) => ({
+        name: s.name,
+        price: Number(s.finalPrice),
+      })),
+  }));
+
+  return {
+    ...product,
+    variants,
+  };
+};
+
 // ============================================================
 // Get all products (with filtering, search, pagination)
 // ============================================================
@@ -77,7 +99,7 @@ const getProducts = async (filters = {}) => {
   ]);
 
   return {
-    items: products,
+    items: products.map(toVariants),
     total,
     page,
     pageSize,
@@ -109,7 +131,7 @@ const getProductById = async (id) => {
     throw error;
   }
 
-  return product;
+  return toVariants(product);
 };
 
 // ============================================================

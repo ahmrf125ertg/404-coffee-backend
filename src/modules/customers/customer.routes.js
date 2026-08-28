@@ -9,6 +9,7 @@ const {
   createCustomer,
   updateCustomer,
   deleteCustomer,
+  getCustomerOrders,
 } = require("./customer.controller");
 
 const { validateCustomer } = require("./customer.validation");
@@ -20,6 +21,13 @@ router.get(
   authMiddleware,
   requirePermission("customers", "view_customers"),
   getCustomers
+);
+
+router.get(
+  "/:id/orders",
+  authMiddleware,
+  requirePermission("customers", "view_customers"),
+  getCustomerOrders
 );
 
 router.get(

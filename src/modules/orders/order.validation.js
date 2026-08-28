@@ -2,7 +2,7 @@ const validateOrder = (req, res, next) => {
     const {
         customerId,
         orderType,
-        tableNumber,
+        table,
         customerName,
         customerPhone,
         phone,
@@ -14,7 +14,7 @@ const validateOrder = (req, res, next) => {
 
     if (
         orderType &&
-        !["DINE_IN", "TAKEAWAY", "ONLINE"].includes(orderType)
+        !["tables", "online"].includes(orderType)
     ) {
         return res.status(400).json({
             success: false,
@@ -75,10 +75,10 @@ const validateOrder = (req, res, next) => {
         }
     }
 
-    if (tableNumber !== undefined && tableNumber !== null && typeof tableNumber !== "string") {
+    if (table !== undefined && table !== null && typeof table !== "string") {
         return res.status(400).json({
             success: false,
-            message: "tableNumber must be a string",
+            message: "table must be a string",
         });
     }
 

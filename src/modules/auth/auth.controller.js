@@ -9,10 +9,10 @@ const loginUser = async (req, res, next) => {
 
         // Record successful login in the audit log
         await logAudit(
-            { ...req, user: { userId: result.user.id } },
+            { ...req, user: { userId: result.employee.id } },
             "auth",
             "login",
-            `User ${result.user.name} logged in`
+            `User ${result.employee.name} logged in`
         );
 
         res.status(200).json({
