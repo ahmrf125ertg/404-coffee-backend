@@ -12,8 +12,16 @@ const createReview = async ({ customerName, customerPhone, rating, comment }) =>
     throw httpError("customerName is required");
   }
 
+  if (customerName.trim().length > 100) {
+    throw httpError("customerName must be 100 characters or less");
+  }
+
   if (!customerPhone || typeof customerPhone !== "string" || customerPhone.trim().length === 0) {
     throw httpError("customerPhone is required");
+  }
+
+  if (customerPhone.trim().length > 20) {
+    throw httpError("customerPhone must be 20 characters or less");
   }
 
   const parsedRating = Number(rating);
@@ -21,12 +29,21 @@ const createReview = async ({ customerName, customerPhone, rating, comment }) =>
     throw httpError("Rating must be an integer between 1 and 5");
   }
 
+  if (comment !== undefined && comment !== null) {
+    if (typeof comment !== "string") {
+      throw httpError("comment must be a string");
+    }
+    if (comment.length > 1000) {
+      throw httpError("comment must be 1000 characters or less");
+    }
+  }
+
   return prisma.review.create({
     data: {
       customerName: customerName.trim(),
       customerPhone: customerPhone.trim(),
       rating: parsedRating,
-      comment: comment || null,
+      comment: comment ? comment.trim() : null,
     },
   });
 };
