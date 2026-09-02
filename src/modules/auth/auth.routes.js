@@ -2,6 +2,7 @@ const express = require("express");
 const rateLimit = require("express-rate-limit");
 
 const authController = require("./auth.controller");
+const authMiddleware = require("../../middlewares/auth.middleware");
 
 const { nodeEnv } = require("../../config/env");
 
@@ -17,5 +18,8 @@ const loginLimiter = rateLimit({
 });
 
 router.post("/login", loginLimiter, authController.loginUser);
+router.get("/me", authMiddleware, authController.getMe);
+router.post("/refresh", authController.refreshToken);
+router.post("/logout", authMiddleware, authController.logoutUser);
 
 module.exports = router;

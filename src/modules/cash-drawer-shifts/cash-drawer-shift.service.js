@@ -406,10 +406,40 @@ const recordCashOut = async (id, data, userId, ipAddress) => {
     return transaction;
 };
 
+const getShiftTransactions = async (shiftId, filters = {}) => {
+    const id = Number(shiftId);
+    if (!Number.isInteger(id) || id <= 0) { const error = new Error("Invalid shift ID"); error.statusCode = 400; throw error; }
+    const shift = await prisma.cashDrawerShift.findUnique({ where: { id } });
+    if (!shift) { const error = new Error("Shift not found"); error.statusCode = 404; throw error; }
+    const { skip, take } = parsePagination(filters);
+    const where = { shiftId: id };
+    if (filters.type) where.type = filters.type;
+    const [items, total] = await Promise.all([
+        prisma.cashDrawerTransaction.findMany({ where, include: { recordedByUser: { select: { id: true, name: true } } }, orderBy: { createdAt: "desc" }, skip, take }),
+        prisma.cashDrawerTransaction.count({ where }),
+    ]);
+    return { items, total };
+};
+
+const getShiftReconciliation = async (shiftId) => {
+    const id = Number(shiftId);
+    if (!Number.isInteger(id) || id <= 0) { const error = new Error("Invalid shift ID"); error.statusCode = 400; throw error; }
+    const shift = await prisma.cashDrawerShift.findUnique({ where: { id }, include: { transactions: true } });
+    if (!shift) { const error = new Error("Shift not found"); error.statusCode = 404; throw error; }
+    const salesTotal = shift.transactions.filter(t => t.type === "SALES").reduce((s, t) => s + Number(t.amount), 0);
+    const manualIn = shift.transactions.filter(t => t.type === "COLLECTION").reduce((s, t) => s + Number(t.amount), 0);
+    const manualOut = shift.transactions.filter(t => ["EXPENSE", "SALARY", "MAINTENANCE", "INCENTIVE"].includes(t.type)).reduce((s, t) => s + Number(t.amount), 0);
+    const expected = Number(shift.openingBalance) + salesTotal + manualIn - manualOut;
+    const actual = Number(shift.actualBalance || 0);
+    return { opening: Number(shift.openingBalance), cashSales: salesTotal, manualIn, manualOut, expected, actual, difference: actual - expected };
+};
+
 module.exports = {
     getShifts,
     getShiftById,
     getCurrentShift,
+    getShiftTransactions,
+    getShiftReconciliation,
     openShift,
     closeShift,
     recordCashIn,

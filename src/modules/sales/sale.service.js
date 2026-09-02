@@ -985,9 +985,28 @@ const deleteSale = async (id) => {
 // Export
 // ============================================================
 
+const getSalesSummary = async (filters = {}) => {
+    const where = {};
+    if (filters.from || filters.to) {
+        where.createdAt = {};
+        if (filters.from) where.createdAt.gte = new Date(filters.from);
+        if (filters.to) where.createdAt.lte = new Date(filters.to);
+    }
+    if (filters.shiftId) where.id = { in: [] };
+    const [sales, count] = await Promise.all([
+        prisma.sale.findMany({ where, select: { subtotal: true, discount: true, total: true, items: { select: { unitPrice: true, totalPrice: true, quantity: true, product: { select: { name: true } } } } } }),
+        prisma.sale.count({ where }),
+    ]);
+    const grossSales = sales.reduce((s, sale) => s + Number(sale.subtotal), 0);
+    const discounts = sales.reduce((s, sale) => s + Number(sale.discount), 0);
+    const netSales = grossSales - discounts;
+    return { grossSales, discounts, netSales, ordersCount: count };
+};
+
 module.exports = {
     getSales,
     getSaleById,
+    getSalesSummary,
     createSale,
     updateSale,
     deleteSale,

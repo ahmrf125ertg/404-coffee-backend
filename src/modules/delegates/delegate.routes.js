@@ -10,6 +10,9 @@ const {
   updateDelegate,
   updateDelegateStatus,
   deleteDelegate,
+  getDelegateOptions,
+  getDelegateOrders,
+  getDelegateCollections,
 } = require("./delegate.controller");
 
 const router = express.Router();
@@ -19,6 +22,13 @@ router.get(
   authMiddleware,
   requirePermission("delegates", "view_delegates"),
   getDelegates
+);
+
+router.get(
+  "/options",
+  authMiddleware,
+  requirePermission("delegates", "view_delegates"),
+  getDelegateOptions
 );
 
 router.get(
@@ -54,6 +64,20 @@ router.delete(
   authMiddleware,
   requirePermission("delegates", "delete_delegate"),
   deleteDelegate
+);
+
+router.get(
+  "/:id/orders",
+  authMiddleware,
+  requirePermission("delegates", "view_delegates"),
+  getDelegateOrders
+);
+
+router.get(
+  "/:id/collections",
+  authMiddleware,
+  requirePermission("delegates", "view_delegates"),
+  getDelegateCollections
 );
 
 module.exports = router;

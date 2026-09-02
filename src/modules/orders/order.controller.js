@@ -297,6 +297,151 @@ const getPublicOrderTracking = async (req, res, next) => {
 };
 
 // ============================================================
+// Cancel order
+// POST /api/orders/:id/cancel
+// ============================================================
+
+const cancelOrder = async (req, res, next) => {
+    try {
+        const order = await orderService.cancelOrder(req.params.id, req.body.reason || "Cancelled by admin");
+        emitOrderUpdated(order);
+        await logAudit(req, "orders", "edit_order", `Order ${order.orderNumber} cancelled`);
+        return res.status(200).json({ success: true, message: "Order cancelled", data: order });
+    } catch (error) { next(error); }
+};
+
+// ============================================================
+// Get order invoice
+// GET /api/orders/:id/invoice
+// ============================================================
+
+const getOrderInvoice = async (req, res, next) => {
+    try {
+        const invoice = await orderService.getOrderInvoice(req.params.id);
+        return res.status(200).json({ success: true, data: invoice });
+    } catch (error) { next(error); }
+};
+
+// ============================================================
+// Get order events
+// GET /api/orders/:id/events
+// ============================================================
+
+const getOrderEvents = async (req, res, next) => {
+    try {
+        const { page, pageSize } = parsePagination(req.query);
+        const { items, total } = await orderService.getOrderEvents(req.params.id, req.query);
+        return res.status(200).json({ success: true, data: items, pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } });
+    } catch (error) { next(error); }
+};
+
+// ============================================================
+// Start preparation
+// POST /api/orders/:id/preparation/start
+// ============================================================
+
+const startPreparation = async (req, res, next) => {
+    try {
+        const order = await orderService.startPreparation(req.params.id);
+        emitOrderUpdated(order);
+        await logAudit(req, "orders", "edit_order", `Order ${order.orderNumber} preparation started`);
+        return res.status(200).json({ success: true, message: "Preparation started", data: order });
+    } catch (error) { next(error); }
+};
+
+// ============================================================
+// Mark item ready
+// POST /api/orders/:id/items/:itemId/ready
+// ============================================================
+
+const markItemReady = async (req, res, next) => {
+    try {
+        const result = await orderService.markItemReady(req.params.id, req.params.itemId);
+        emitOrderItemUpdated({ orderId: Number(req.params.id), itemId: Number(req.params.itemId), status: result.item.status, orderStatus: result.orderStatus });
+        return res.status(200).json({ success: true, message: "Item marked ready", data: result });
+    } catch (error) { next(error); }
+};
+
+// ============================================================
+// Reopen item
+// POST /api/orders/:id/items/:itemId/reopen
+// ============================================================
+
+const reopenItem = async (req, res, next) => {
+    try {
+        const result = await orderService.reopenItem(req.params.id, req.params.itemId, req.body.reason);
+        emitOrderItemUpdated({ orderId: Number(req.params.id), itemId: Number(req.params.itemId), status: result.item.status, orderStatus: result.orderStatus });
+        return res.status(200).json({ success: true, message: "Item reopened for preparation", data: result });
+    } catch (error) { next(error); }
+};
+
+// ============================================================
+// Get table details
+// GET /api/orders/tables/:tableNumber/details
+// ============================================================
+
+const getTableDetails = async (req, res, next) => {
+    try {
+        const data = await orderService.getTableDetails(req.params.tableNumber);
+        return res.status(200).json({ success: true, data });
+    } catch (error) { next(error); }
+};
+
+// ============================================================
+// Create table order
+// POST /api/orders/tables/:tableNumber/orders
+// ============================================================
+
+const createTableOrder = async (req, res, next) => {
+    try {
+        const order = await orderService.createTableOrder(req.params.tableNumber, req.body);
+        emitOrderCreated(order);
+        await logAudit(req, "orders", "create_order", `Table order created for table ${req.params.tableNumber}`);
+        return res.status(201).json({ success: true, message: "Table order created", data: order });
+    } catch (error) { next(error); }
+};
+
+// ============================================================
+// Add items to table
+// POST /api/orders/tables/:tableNumber/items
+// ============================================================
+
+const addTableItems = async (req, res, next) => {
+    try {
+        const order = await orderService.addTableItems(req.params.tableNumber, req.body);
+        emitOrderUpdated(order);
+        return res.status(200).json({ success: true, message: "Items added to table", data: order });
+    } catch (error) { next(error); }
+};
+
+// ============================================================
+// Table checkout
+// POST /api/orders/tables/:tableNumber/checkout
+// ============================================================
+
+const checkoutTable = async (req, res, next) => {
+    try {
+        const result = await orderService.checkoutTable(req.params.tableNumber, req.body);
+        emitOrderUpdated(result.order);
+        await logAudit(req, "orders", "edit_order", `Table ${req.params.tableNumber} checked out`);
+        return res.status(200).json({ success: true, message: "Table checked out", data: result });
+    } catch (error) { next(error); }
+};
+
+// ============================================================
+// Get table history
+// GET /api/orders/tables/:tableNumber/history
+// ============================================================
+
+const getTableHistory = async (req, res, next) => {
+    try {
+        const { page, pageSize } = parsePagination(req.query);
+        const { items, total } = await orderService.getTableHistory(req.params.tableNumber, req.query);
+        return res.status(200).json({ success: true, data: items, pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } });
+    } catch (error) { next(error); }
+};
+
+// ============================================================
 // Get active table order
 // GET /api/table-sessions/:tableNumber/active-order
 // ============================================================
@@ -327,4 +472,15 @@ module.exports = {
     closeTableOrder,
     getPublicOrderTracking,
     getActiveTableOrder,
+    cancelOrder,
+    getOrderInvoice,
+    getOrderEvents,
+    startPreparation,
+    markItemReady,
+    reopenItem,
+    getTableDetails,
+    createTableOrder,
+    addTableItems,
+    checkoutTable,
+    getTableHistory,
 };

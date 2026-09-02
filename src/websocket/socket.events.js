@@ -49,11 +49,34 @@ const emitOrderItemUpdated = ({ orderId, itemId, status, orderStatus }) => {
   }
 };
 
+const DASHBOARD_UPDATED = "dashboard:updated";
+const INVENTORY_UPDATED = "inventory:updated";
+
+const emitDashboardUpdated = (data) => {
+    try {
+        const io = require("./socket.server").getIO();
+        if (!io) return;
+        io.emit(DASHBOARD_UPDATED, { event: DASHBOARD_UPDATED, ...data, at: new Date().toISOString() });
+    } catch (error) { logger.error({ err: error }, "Failed to emit dashboard:updated"); }
+};
+
+const emitInventoryUpdated = (data) => {
+    try {
+        const io = require("./socket.server").getIO();
+        if (!io) return;
+        io.emit(INVENTORY_UPDATED, { event: INVENTORY_UPDATED, ...data, at: new Date().toISOString() });
+    } catch (error) { logger.error({ err: error }, "Failed to emit inventory:updated"); }
+};
+
 module.exports = {
   ORDER_CREATED,
   ORDER_UPDATED,
   ORDER_ITEM_UPDATED,
+  DASHBOARD_UPDATED,
+  INVENTORY_UPDATED,
   emitOrderCreated,
   emitOrderUpdated,
   emitOrderItemUpdated,
+  emitDashboardUpdated,
+  emitInventoryUpdated,
 };

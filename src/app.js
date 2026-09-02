@@ -78,6 +78,20 @@ app.use(express.urlencoded({ extended: true }));
 // ============================================================
 // Health
 // ============================================================
+app.get("/api/health/ready", async (req, res) => {
+    try {
+        const prisma = require("./lib/prisma");
+        await prisma.$queryRaw`SELECT 1`;
+        res.status(200).json({ success: true, data: { status: "ok", database: "connected", version: "1.0.0", uptime: process.uptime() } });
+    } catch {
+        res.status(503).json({ success: true, data: { status: "degraded", database: "disconnected" } });
+    }
+});
+
+app.get("/api/health/live", (req, res) => {
+    res.status(200).json({ success: true, data: { status: "ok", uptime: process.uptime() } });
+});
+
 app.get("/api/health", (req, res) => {
   res.status(200).json({
     success: true,

@@ -7,6 +7,8 @@ const {
   getShifts,
   getCurrentShift,
   getShiftById,
+  getShiftTransactions,
+  getShiftReconciliation,
   openShift,
   closeShift,
   recordCashIn,
@@ -46,6 +48,20 @@ router.get(
   authMiddleware,
   requirePermission(PAGE, "view_shifts_report"),
   getShiftById
+);
+
+router.get(
+  "/:id/transactions",
+  authMiddleware,
+  requirePermission(PAGE, "view_shifts_report"),
+  getShiftTransactions
+);
+
+router.get(
+  "/:id/reconciliation",
+  authMiddleware,
+  requirePermission(PAGE, "view_shifts_report"),
+  getShiftReconciliation
 );
 
 // Open shift

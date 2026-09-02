@@ -19,6 +19,8 @@ const getDashboard = async () => {
         supplierCount,
         delegateCount,
         rawMaterials,
+        allSales,
+        allProducts,
     ] = await Promise.all([
         prisma.sale.findMany({
             where: {
@@ -66,6 +68,13 @@ const getDashboard = async () => {
                 batches: true,
             },
         }),
+        prisma.sale.findMany({
+            where: { status: "COMPLETED" },
+            select: { subtotal: true, discount: true, total: true, items: { select: { unitPrice: true, totalPrice: true, quantity: true } } },
+        }),
+        prisma.product.findMany({
+            select: { id: true, name: true, category: true },
+        }),
     ]);
 
     const toNumber = (value) => Number(value) || 0;
@@ -80,7 +89,14 @@ const getDashboard = async () => {
         0
     );
 
-    const lowStock = rawMaterials
+    const grossSales = allSales.reduce((sum, sale) => sum + toNumber(sale.subtotal), 0);
+    const totalDiscounts = allSales.reduce((sum, sale) => sum + toNumber(sale.discount), 0);
+    const profit = allSales.reduce((sum, sale) => {
+        const itemCost = sale.items.reduce((s, item) => s + toNumber(item.unitPrice) * toNumber(item.quantity), 0);
+        return sum + toNumber(sale.total) - itemCost;
+    }, 0);
+
+    const stock = rawMaterials
         .map((material) => {
             const currentStock = material.batches.reduce(
                 (sum, batch) => sum + toNumber(batch.quantity),
@@ -94,8 +110,9 @@ const getDashboard = async () => {
                 currentStock,
                 minStockAlert: toNumber(material.minStockAlert),
             };
-        })
-        .filter((item) => item.currentStock <= item.minStockAlert);
+        });
+
+    const lowStock = stock.filter((item) => item.currentStock <= item.minStockAlert);
 
     const expiringSoon = rawMaterials
         .flatMap((material) =>
@@ -161,6 +178,9 @@ const getDashboard = async () => {
                 count: allSalesAgg._count || 0,
                 total: toNumber(allSalesAgg._sum?.total),
             },
+            grossSales: Math.round(grossSales * 100) / 100,
+            discounts: Math.round(totalDiscounts * 100) / 100,
+            profit: Math.round(profit * 100) / 100,
             todayOrders: {
                 count: todayOrders.length,
                 total: todayOrdersTotal,
@@ -178,12 +198,15 @@ const getDashboard = async () => {
             suppliers: supplierCount,
             delegates: delegateCount,
         },
+        products: allProducts,
         inventory: {
+            stock,
             lowStock,
             expiringSoon,
             lowStockCount: lowStock.length,
             expiringSoonCount: expiringSoon.length,
         },
+        drawer: shiftSummary,
     };
 };
 

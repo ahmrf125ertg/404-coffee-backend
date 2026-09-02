@@ -10,6 +10,8 @@ const {
   updateUserStatus,
   getUserPermissions,
   deleteUser,
+  getUserById,
+  updateUserPageAccess,
 } = require("./user.controller");
 
 const router = express.Router();
@@ -20,6 +22,14 @@ router.get(
   authMiddleware,
   requirePermission("users", "view_users"),
   getUsers
+);
+
+// Get user by ID
+router.get(
+  "/:id",
+  authMiddleware,
+  requirePermission("users", "view_users"),
+  getUserById
 );
 
 // Create new user
@@ -60,6 +70,14 @@ router.delete(
   authMiddleware,
   requirePermission("users", "delete_user"),
   deleteUser
+);
+
+// Update user page access
+router.put(
+  "/:id/page-access",
+  authMiddleware,
+  requirePermission("users", "edit_user"),
+  updateUserPageAccess
 );
 
 module.exports = router;

@@ -208,10 +208,44 @@ const deleteSupplier = async (id) => {
 };
 
 
+// Get supplier options
+const getSupplierOptions = async (query = {}) => {
+    const where = {};
+    if (query.search && query.search.trim()) {
+        where.OR = [
+            { name: { contains: query.search.trim(), mode: "insensitive" } },
+            { phone: { contains: query.search.trim(), mode: "insensitive" } },
+        ];
+    }
+    return prisma.supplier.findMany({ where, select: { id: true, name: true, phone: true }, orderBy: { name: "asc" } });
+};
+
+// Get supplier transactions
+const getSupplierTransactions = async (supplierId, filters = {}) => {
+    const id = Number(supplierId);
+    if (!Number.isInteger(id) || id <= 0) { const error = new Error("Invalid supplier ID"); error.statusCode = 400; throw error; }
+    const supplier = await prisma.supplier.findUnique({ where: { id } });
+    if (!supplier) { const error = new Error("Supplier not found"); error.statusCode = 404; throw error; }
+    const { skip, take } = parsePagination(filters);
+    const purchases = await prisma.purchase.findMany({ where: { supplierId: id }, orderBy: { invoiceDate: "desc" }, skip, take, select: { id: true, invoiceNo: true, invoiceDate: true, total: true, status: true } });
+    const returns = await prisma.return.findMany({ where: { supplierId: id }, orderBy: { returnDate: "desc" }, select: { id: true, returnNo: true, returnDate: true, totalValue: true, status: true } });
+    const allTx = [
+        ...purchases.map(p => ({ ...p, type: "PURCHASE", date: p.invoiceDate, amount: Number(p.total) })),
+        ...returns.map(r => ({ ...r, type: "RETURN", date: r.returnDate, amount: Number(r.totalValue) })),
+    ].sort((a, b) => new Date(b.date) - new Date(a.date));
+    const total = allTx.length;
+    const pageTx = allTx.slice(skip, skip + take);
+    const summary = { totalPurchases: purchases.reduce((s, p) => s + Number(p.total), 0), totalReturns: returns.reduce((s, r) => s + Number(r.totalValue), 0) };
+    return { items: pageTx, total, summary };
+};
+
+
 module.exports = {
     getSuppliers,
     getSupplierById,
     createSupplier,
     updateSupplier,
     deleteSupplier,
+    getSupplierOptions,
+    getSupplierTransactions,
 };

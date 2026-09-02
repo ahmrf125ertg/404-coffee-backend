@@ -423,6 +423,56 @@ const loginUser = async ({ name, username, password }) => {
   };
 };
 
+const getMe = async (userId) => {
+    const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, name: true, position: true, role: true, status: true, createdAt: true },
+    });
+    if (!user) {
+        const error = new Error("User not found");
+        error.statusCode = 404;
+        throw error;
+    }
+    return {
+        user,
+        permissions: buildPermissions(user.role),
+        pageAccess: buildPermissions(user.role),
+    };
+};
+
+const refreshToken = async (refreshToken) => {
+    if (!refreshToken) {
+        const error = new Error("Refresh token is required");
+        error.statusCode = 400;
+        throw error;
+    }
+    try {
+        const decoded = jwt.verify(refreshToken, jwtSecret);
+        if (decoded.type !== "refresh") {
+            const error = new Error("Invalid refresh token");
+            error.statusCode = 401;
+            throw error;
+        }
+        const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
+        if (!user || user.status !== "ACTIVE") {
+            const error = new Error("User not found or suspended");
+            error.statusCode = 401;
+            throw error;
+        }
+        const token = jwt.sign({ userId: user.id, role: user.role }, jwtSecret, { expiresIn: jwtExpiresIn });
+        return { access_token: token, expires_in: 3600 };
+    } catch (error) {
+        if (error.name === "TokenExpiredError" || error.name === "JsonWebTokenError") {
+            const e = new Error("Invalid or expired refresh token");
+            e.statusCode = 401;
+            throw e;
+        }
+        throw error;
+    }
+};
+
 module.exports = {
   loginUser,
+  getMe,
+  refreshToken,
 };

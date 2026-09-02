@@ -249,6 +249,52 @@ const deleteDelegate = async (id) => {
 };
 
 
+// Get delegate options
+const getDelegateOptions = async (query = {}) => {
+    const where = {};
+    if (query.search && query.search.trim()) {
+        where.OR = [
+            { name: { contains: query.search.trim(), mode: "insensitive" } },
+            { phone: { contains: query.search.trim(), mode: "insensitive" } },
+        ];
+    }
+    return prisma.delegate.findMany({ where, select: { id: true, name: true, phone: true }, orderBy: { name: "asc" } });
+};
+
+
+// Get delegate orders
+const getDelegateOrders = async (delegateId, filters = {}) => {
+    const id = Number(delegateId);
+    if (!Number.isInteger(id) || id <= 0) { const error = new Error("Invalid delegate ID"); error.statusCode = 400; throw error; }
+    const delegate = await prisma.delegate.findUnique({ where: { id } });
+    if (!delegate) { const error = new Error("Delegate not found"); error.statusCode = 404; throw error; }
+    const { skip, take } = parsePagination(filters);
+    const where = { delegateId: id };
+    if (filters.status) where.status = filters.status;
+    const [items, total] = await Promise.all([
+        prisma.order.findMany({ where, include: { items: { include: { product: { select: { id: true, name: true } }, productSize: { select: { id: true, name: true } } } }, customer: true }, orderBy: { createdAt: "desc" }, skip, take }),
+        prisma.order.count({ where }),
+    ]);
+    return { items, total };
+};
+
+
+// Get delegate collections
+const getDelegateCollections = async (delegateId, filters = {}) => {
+    const id = Number(delegateId);
+    if (!Number.isInteger(id) || id <= 0) { const error = new Error("Invalid delegate ID"); error.statusCode = 400; throw error; }
+    const delegate = await prisma.delegate.findUnique({ where: { id } });
+    if (!delegate) { const error = new Error("Delegate not found"); error.statusCode = 404; throw error; }
+    const { skip, take } = parsePagination(filters);
+    const where = { delegateId: id, status: "COMPLETED", paymentMethod: "CASH" };
+    const [items, total] = await Promise.all([
+        prisma.order.findMany({ where, select: { id: true, orderNumber: true, total: true, createdAt: true }, orderBy: { createdAt: "desc" }, skip, take }),
+        prisma.order.count({ where }),
+    ]);
+    return { items, total };
+};
+
+
 module.exports = {
     getDelegates,
     getDelegateById,
@@ -256,4 +302,7 @@ module.exports = {
     updateDelegate,
     updateDelegateStatus,
     deleteDelegate,
+    getDelegateOptions,
+    getDelegateOrders,
+    getDelegateCollections,
 };

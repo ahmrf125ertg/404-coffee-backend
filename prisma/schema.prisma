@@ -27,6 +27,10 @@ model User {
   auditLogs       AuditLog[]
   updatedSettings Setting[]  @relation("UpdatedSettings")
 
+  attendance  Attendance[]
+  devices     EmployeeDevice[]
+  orderEvents OrderEvent[]
+
   @@map("users")
 }
 
@@ -47,7 +51,7 @@ model RawMaterial {
   name            String  @unique
   unit            String
   supplier        String
-  minStockAlert   Decimal 
+  minStockAlert   Decimal
   expiryAlertDays Int?
 
   addedAt   DateTime @default(now())
@@ -68,8 +72,8 @@ model RawMaterial {
 model RawMaterialBatch {
   id            Int       @id @default(autoincrement())
   rawMaterialId Int
-  quantity      Decimal   
-  pricePerUnit  Decimal   
+  quantity      Decimal
+  pricePerUnit  Decimal
   expiryDate    DateTime?
   addedAt       DateTime  @default(now())
 
@@ -140,14 +144,14 @@ model ProductTypeIngredient {
 }
 
 model ProductSize {
-  id        Int    @id @default(autoincrement())
+  id        Int     @id @default(autoincrement())
   productId Int
   typeName  String
   name      String
   isActive  Boolean @default(true)
 
-  basePrice  Decimal 
-  finalPrice Decimal 
+  basePrice  Decimal
+  finalPrice Decimal
 
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
@@ -168,7 +172,7 @@ model ProductSizeIngredient {
   productSizeId Int
   rawMaterialId Int
 
-  quantity Decimal 
+  quantity Decimal
   unit     String
 
   productSize ProductSize @relation(fields: [productSizeId], references: [id], onDelete: Cascade)
@@ -219,8 +223,8 @@ model Customer {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  sales   Sale[]
-  orders  Order[]
+  sales  Sale[]
+  orders Order[]
 
   @@index([name])
   @@map("customers")
@@ -239,8 +243,8 @@ model Supplier {
   supplierType          String
   supplierCategory      String
   paymentTerms          String?
-  creditLimit           Decimal @default(0) 
-  openingBalance        Decimal @default(0) 
+  creditLimit           Decimal @default(0)
+  openingBalance        Decimal @default(0)
   notes                 String?
 
   createdAt DateTime @default(now())
@@ -264,9 +268,9 @@ model Purchase {
   supplierId Int
 
   invoiceDate DateTime
-  discount    Decimal  @default(0) 
-  total       Decimal  
-  finalTotal  Decimal  
+  discount    Decimal  @default(0)
+  total       Decimal
+  finalTotal  Decimal
 
   status PurchaseStatus @default(DRAFT)
 
@@ -289,10 +293,10 @@ model PurchaseItem {
   purchaseId    Int
   rawMaterialId Int
 
-  quantity     Decimal 
+  quantity     Decimal
   unit         String
-  pricePerUnit Decimal 
-  totalPrice   Decimal 
+  pricePerUnit Decimal
+  totalPrice   Decimal
 
   purchase    Purchase    @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
   rawMaterial RawMaterial @relation(fields: [rawMaterialId], references: [id])
@@ -321,9 +325,9 @@ model Sale {
 
   customerId Int?
 
-  subtotal Decimal 
-  discount Decimal @default(0) 
-  total    Decimal 
+  subtotal Decimal
+  discount Decimal @default(0)
+  total    Decimal
 
   paymentMethod PaymentMethod @default(CASH)
   status        SaleStatus    @default(COMPLETED)
@@ -346,9 +350,9 @@ model SaleItem {
   saleId        Int
   productId     Int
   productSizeId Int
-  quantity      Decimal 
-  unitPrice     Decimal 
-  totalPrice    Decimal 
+  quantity      Decimal
+  unitPrice     Decimal
+  totalPrice    Decimal
 
   sale        Sale        @relation(fields: [saleId], references: [id], onDelete: Cascade)
   product     Product     @relation(fields: [productId], references: [id])
@@ -388,9 +392,9 @@ enum OrderItemStatus {
 }
 
 model Order {
-  id           Int      @id @default(autoincrement())
-  orderNumber  String   @unique
-  customerName String?
+  id            Int     @id @default(autoincrement())
+  orderNumber   String  @unique
+  customerName  String?
   trackingToken String? @unique
 
   customerId Int?
@@ -406,9 +410,9 @@ model Order {
 
   deliveryAddress Json?
 
-  subtotal Decimal 
-  discount Decimal @default(0) 
-  total    Decimal 
+  subtotal Decimal
+  discount Decimal @default(0)
+  total    Decimal
 
   paymentMethod PaymentMethod @default(CASH)
 
@@ -417,7 +421,8 @@ model Order {
   customer Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
   delegate Delegate? @relation(fields: [delegateId], references: [id], onDelete: SetNull)
 
-  items    OrderItem[]
+  items  OrderItem[]
+  events OrderEvent[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -440,9 +445,9 @@ model OrderItem {
   productId     Int
   productSizeId Int
 
-  quantity   Decimal 
-  unitPrice  Decimal 
-  totalPrice Decimal 
+  quantity   Decimal
+  unitPrice  Decimal
+  totalPrice Decimal
   status     OrderItemStatus @default(PENDING)
 
   order       Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
@@ -479,8 +484,8 @@ model Return {
   generalReason String?
   notes         String?
 
-  totalQuantity Decimal @default(0) 
-  totalValue    Decimal @default(0) 
+  totalQuantity Decimal @default(0)
+  totalValue    Decimal @default(0)
 
   status ReturnStatus @default(DRAFT)
 
@@ -503,10 +508,10 @@ model ReturnItem {
   returnId      Int
   rawMaterialId Int
 
-  quantity     Decimal 
+  quantity     Decimal
   unit         String
-  pricePerUnit Decimal 
-  totalPrice   Decimal 
+  pricePerUnit Decimal
+  totalPrice   Decimal
 
   reason String?
 
@@ -571,12 +576,12 @@ model CashDrawerShift {
   id             Int         @id @default(autoincrement())
   openedByUserId Int
   openedAt       DateTime    @default(now())
-  openingBalance Decimal     
+  openingBalance Decimal
   closedByUserId Int?
   closedAt       DateTime?
-  closingBalance Decimal?    
-  actualBalance  Decimal?    
-  difference     Decimal?    
+  closingBalance Decimal?
+  actualBalance  Decimal?
+  difference     Decimal?
   notes          String?
   status         ShiftStatus @default(OPEN)
 
@@ -598,7 +603,7 @@ model CashDrawerTransaction {
   id               Int                   @id @default(autoincrement())
   shiftId          Int
   type             DrawerTransactionType
-  amount           Decimal               
+  amount           Decimal
   description      String?
   recordedByUserId Int
 
@@ -640,11 +645,11 @@ model AuditLog {
 // ============================================================
 
 model Review {
-  id           Int     @id @default(autoincrement())
-  customerName String
+  id            Int     @id @default(autoincrement())
+  customerName  String
   customerPhone String
-  rating       Int
-  comment      String?
+  rating        Int
+  comment       String?
 
   createdAt DateTime @default(now())
 
@@ -670,4 +675,72 @@ model Setting {
   updatedAt DateTime @updatedAt
 
   @@map("settings")
+}
+
+model ProductCategory {
+  id       Int     @id @default(autoincrement())
+  name     String  @unique
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("product_categories")
+}
+
+model Attendance {
+  id          Int       @id @default(autoincrement())
+  userId      Int
+  checkInAt   DateTime
+  checkOutAt  DateTime?
+  status      String    @default("ON_TIME")
+  lateMinutes Int       @default(0)
+  notes       String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([checkInAt])
+  @@map("attendance")
+}
+
+model EmployeeDevice {
+  id                Int    @id @default(autoincrement())
+  userId            Int
+  name              String
+  deviceFingerprint String @unique
+  deviceInfo        Json?
+  status            String @default("PENDING")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([deviceFingerprint])
+  @@index([status])
+  @@map("employee_devices")
+}
+
+model OrderEvent {
+  id      Int     @id @default(autoincrement())
+  orderId Int
+  type    String
+  status  String?
+  notes   String?
+  userId  Int?
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  user  User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([orderId])
+  @@index([type])
+  @@index([createdAt])
+  @@map("order_events")
 }

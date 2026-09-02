@@ -10,6 +10,8 @@ const {
   updateCustomer,
   deleteCustomer,
   getCustomerOrders,
+  lookupCustomer,
+  mergeCustomers,
 } = require("./customer.controller");
 
 const { validateCustomer } = require("./customer.validation");
@@ -21,6 +23,13 @@ router.get(
   authMiddleware,
   requirePermission("customers", "view_customers"),
   getCustomers
+);
+
+router.get(
+  "/lookup",
+  authMiddleware,
+  requirePermission("customers", "view_customers"),
+  lookupCustomer
 );
 
 router.get(
@@ -57,6 +66,13 @@ router.delete(
   authMiddleware,
   requirePermission("customers", "delete_customer"),
   deleteCustomer
+);
+
+router.post(
+  "/:id/merge",
+  authMiddleware,
+  requirePermission("customers", "edit_customer"),
+  mergeCustomers
 );
 
 module.exports = router;

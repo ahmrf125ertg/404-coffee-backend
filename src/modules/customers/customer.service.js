@@ -372,6 +372,47 @@ const getCustomerOrders = async (customerId, filters = {}) => {
     return { items: orders, total };
 };
 
+// ============================================================
+// Lookup customer by phone
+// ============================================================
+
+const lookupCustomer = async (phone) => {
+    if (!phone) {
+        const error = new Error("Phone query parameter is required");
+        error.statusCode = 400;
+        throw error;
+    }
+    const customer = await prisma.customer.findUnique({ where: { phone: phone.trim() } });
+    return customer || null;
+};
+
+// ============================================================
+// Merge customers
+// ============================================================
+
+const mergeCustomers = async (primaryId, duplicateId) => {
+    const pid = Number(primaryId);
+    const did = Number(duplicateId);
+    if (!Number.isInteger(pid) || pid <= 0 || !Number.isInteger(did) || did <= 0) {
+        const error = new Error("Invalid customer IDs");
+        error.statusCode = 400;
+        throw error;
+    }
+    if (pid === did) {
+        const error = new Error("Cannot merge a customer with itself");
+        error.statusCode = 400;
+        throw error;
+    }
+    const primary = await prisma.customer.findUnique({ where: { id: pid } });
+    if (!primary) { const error = new Error("Primary customer not found"); error.statusCode = 404; throw error; }
+    const duplicate = await prisma.customer.findUnique({ where: { id: did } });
+    if (!duplicate) { const error = new Error("Duplicate customer not found"); error.statusCode = 404; throw error; }
+
+    const movedOrders = await prisma.order.updateMany({ where: { customerId: did }, data: { customerId: pid } });
+    await prisma.customer.delete({ where: { id: did } });
+    return { customer: primary, movedOrders: movedOrders.count, deletedDuplicate: did };
+};
+
 module.exports = {
     getCustomers,
     getCustomerById,
@@ -379,4 +420,6 @@ module.exports = {
     updateCustomer,
     deleteCustomer,
     getCustomerOrders,
+    lookupCustomer,
+    mergeCustomers,
 };

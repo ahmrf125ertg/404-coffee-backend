@@ -1040,6 +1040,171 @@ const getActiveTableOrder = async (tableNumber) => {
     return order;
 };
 
+// ============================================================
+// Cancel order
+// ============================================================
+
+const cancelOrder = async (id, reason) => {
+    const orderId = Number(id);
+    if (!Number.isInteger(orderId) || orderId <= 0) throw httpError("Invalid order ID");
+    const existing = await prisma.order.findUnique({ where: { id: orderId } });
+    if (!existing) throw httpError("Order not found", 404);
+    if (existing.status === "COMPLETED" || existing.status === "CANCELLED") throw httpError("Cannot cancel a completed or already cancelled order");
+    const order = await prisma.order.update({ where: { id: orderId }, data: { status: "CANCELLED" }, include: getOrderInclude });
+    return order;
+};
+
+// ============================================================
+// Get order invoice
+// ============================================================
+
+const getOrderInvoice = async (id) => {
+    const orderId = Number(id);
+    if (!Number.isInteger(orderId) || orderId <= 0) throw httpError("Invalid order ID");
+    const order = await prisma.order.findUnique({ where: { id: orderId }, include: { ...getOrderInclude, sale: true } });
+    if (!order) throw httpError("Order not found", 404);
+    const items = order.items.map(i => ({ name: i.product.name, sizeName: i.productSize.name, quantity: Number(i.quantity), unitPrice: Number(i.unitPrice), totalPrice: Number(i.totalPrice) }));
+    return { invoiceNumber: order.orderNumber, items, subtotal: Number(order.subtotal), discount: Number(order.discount), total: Number(order.total), paymentMethod: order.paymentMethod, customer: order.customer, completedAt: order.updatedAt };
+};
+
+// ============================================================
+// Get order events
+// ============================================================
+
+const getOrderEvents = async (orderId, filters = {}) => {
+    const id = Number(orderId);
+    if (!Number.isInteger(id) || id <= 0) throw httpError("Invalid order ID");
+    const { skip, take } = parsePagination(filters);
+    const where = { orderId: id };
+    const [items, total] = await Promise.all([
+        prisma.orderEvent.findMany({ where, orderBy: { createdAt: "desc" }, skip, take }),
+        prisma.orderEvent.count({ where }),
+    ]);
+    return { items, total };
+};
+
+// ============================================================
+// Start preparation
+// ============================================================
+
+const startPreparation = async (id) => {
+    const orderId = Number(id);
+    if (!Number.isInteger(orderId) || orderId <= 0) throw httpError("Invalid order ID");
+    const existing = await prisma.order.findUnique({ where: { id: orderId } });
+    if (!existing) throw httpError("Order not found", 404);
+    await prisma.orderItem.updateMany({ where: { orderId, status: "PENDING" }, data: { status: "PREPARING" } });
+    const order = await prisma.order.update({ where: { id: orderId }, data: { status: "PREPARING" }, include: getOrderInclude });
+    return order;
+};
+
+// ============================================================
+// Mark item ready
+// ============================================================
+
+const markItemReady = async (orderId, itemId) => {
+    const orderIdNum = Number(orderId);
+    const itemIdNum = Number(itemId);
+    if (!Number.isInteger(orderIdNum) || orderIdNum <= 0) throw httpError("Invalid order ID");
+    if (!Number.isInteger(itemIdNum) || itemIdNum <= 0) throw httpError("Invalid item ID");
+    const item = await prisma.orderItem.findFirst({ where: { id: itemIdNum, orderId: orderIdNum } });
+    if (!item) throw httpError("Order item not found", 404);
+    const updatedItem = await prisma.orderItem.update({ where: { id: itemIdNum }, data: { status: "READY" } });
+    const allItems = await prisma.orderItem.findMany({ where: { orderId: orderIdNum } });
+    const activeItems = allItems.filter(i => i.status !== "CANCELLED");
+    const allReady = activeItems.length > 0 && activeItems.every(i => i.status === "READY");
+    let newOrderStatus = allReady ? "READY" : (await prisma.order.findUnique({ where: { id: orderIdNum } })).status;
+    await prisma.order.update({ where: { id: orderIdNum }, data: { status: newOrderStatus } });
+    return { item: updatedItem, orderStatus: newOrderStatus };
+};
+
+// ============================================================
+// Reopen item
+// ============================================================
+
+const reopenItem = async (orderId, itemId, reason) => {
+    const orderIdNum = Number(orderId);
+    const itemIdNum = Number(itemId);
+    if (!Number.isInteger(orderIdNum) || orderIdNum <= 0) throw httpError("Invalid order ID");
+    if (!Number.isInteger(itemIdNum) || itemIdNum <= 0) throw httpError("Invalid item ID");
+    const item = await prisma.orderItem.findFirst({ where: { id: itemIdNum, orderId: orderIdNum } });
+    if (!item) throw httpError("Order item not found", 404);
+    const updatedItem = await prisma.orderItem.update({ where: { id: itemIdNum }, data: { status: "PREPARING" } });
+    await prisma.order.update({ where: { id: orderIdNum }, data: { status: "PREPARING" } });
+    return { item: updatedItem, orderStatus: "PREPARING" };
+};
+
+// ============================================================
+// Get table details
+// ============================================================
+
+const getTableDetails = async (tableNumber) => {
+    if (!tableNumber) throw httpError("Table number is required");
+    const activeOrders = await prisma.order.findMany({ where: { orderType: "tables", table: tableNumber, status: { notIn: ["COMPLETED", "CANCELLED"] } }, include: getOrderInclude, orderBy: { createdAt: "desc" } });
+    if (activeOrders.length === 0) return { tableNumber, status: "EMPTY", activeOrder: null, orders: [], subtotal: 0, total: 0 };
+    const subtotal = activeOrders.reduce((s, o) => s + Number(o.subtotal), 0);
+    const total = activeOrders.reduce((s, o) => s + Number(o.total), 0);
+    return { tableNumber, status: "OCCUPIED", activeOrder: activeOrders[0], orders: activeOrders, subtotal, total };
+};
+
+// ============================================================
+// Create table order
+// ============================================================
+
+const createTableOrder = async (tableNumber, data) => {
+    if (!tableNumber) throw httpError("Table number is required");
+    return createOrder({ ...data, orderType: "tables", table: tableNumber, channel: "ADMIN_POS" });
+};
+
+// ============================================================
+// Add items to table
+// ============================================================
+
+const addTableItems = async (tableNumber, data) => {
+    if (!tableNumber) throw httpError("Table number is required");
+    const activeOrder = await prisma.order.findFirst({ where: { orderType: "tables", table: tableNumber, status: { notIn: ["COMPLETED", "CANCELLED"] } }, orderBy: { createdAt: "desc" } });
+    if (!activeOrder) throw httpError("No active order for this table", 404);
+    const { items } = data;
+    if (!Array.isArray(items) || items.length === 0) throw httpError("Items array is required");
+    const { orderItems, subtotal: newItemsTotal } = await validateAndPrepareItems(items);
+    const newSubtotal = Number(activeOrder.subtotal) + newItemsTotal;
+    const newTotal = newSubtotal - Number(activeOrder.discount);
+    await prisma.orderItem.createMany({ data: orderItems.map(i => ({ ...i, orderId: activeOrder.id })) });
+    const updatedOrder = await prisma.order.update({ where: { id: activeOrder.id }, data: { subtotal: newSubtotal, total: newTotal }, include: getOrderInclude });
+    return updatedOrder;
+};
+
+// ============================================================
+// Table checkout
+// ============================================================
+
+const checkoutTable = async (tableNumber, data) => {
+    if (!tableNumber) throw httpError("Table number is required");
+    const activeOrders = await prisma.order.findMany({ where: { orderType: "tables", table: tableNumber, status: { notIn: ["COMPLETED", "CANCELLED"] } } });
+    if (activeOrders.length === 0) throw httpError("No active orders for this table", 404);
+    const updatedOrders = [];
+    for (const o of activeOrders) {
+        const updated = await prisma.order.update({ where: { id: o.id }, data: { status: "COMPLETED", paymentMethod: data.paymentMethod || o.paymentMethod }, include: getOrderInclude });
+        updatedOrders.push(updated);
+    }
+    const totalPaid = updatedOrders.reduce((s, o) => s + Number(o.total), 0);
+    return { order: updatedOrders[0], orders: updatedOrders, totalPaid, tableStatus: "EMPTY" };
+};
+
+// ============================================================
+// Get table history
+// ============================================================
+
+const getTableHistory = async (tableNumber, filters = {}) => {
+    if (!tableNumber) throw httpError("Table number is required");
+    const { skip, take } = parsePagination(filters);
+    const where = { orderType: "tables", table: tableNumber };
+    const [items, total] = await Promise.all([
+        prisma.order.findMany({ where, include: getOrderInclude, orderBy: { createdAt: "desc" }, skip, take }),
+        prisma.order.count({ where }),
+    ]);
+    return { items, total };
+};
+
 module.exports = {
     createOrder,
     getOrders,
@@ -1055,4 +1220,15 @@ module.exports = {
     closeTableOrder,
     getPublicOrderTracking,
     getActiveTableOrder,
+    cancelOrder,
+    getOrderInvoice,
+    getOrderEvents,
+    startPreparation,
+    markItemReady,
+    reopenItem,
+    getTableDetails,
+    createTableOrder,
+    addTableItems,
+    checkoutTable,
+    getTableHistory,
 };

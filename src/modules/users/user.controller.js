@@ -375,6 +375,35 @@ const deleteUser = async (req, res, next) => {
   }
 };
 
+// =========================================================
+// GET USER BY ID
+// =========================================================
+const getUserById = async (req, res, next) => {
+  try {
+    const userId = Number(req.params.id);
+    if (!Number.isInteger(userId) || userId <= 0) { const error = new Error("Invalid user ID"); error.statusCode = 400; throw error; }
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: USER_SELECT });
+    if (!user) { const error = new Error("User not found"); error.statusCode = 404; throw error; }
+    res.status(200).json({ success: true, data: user });
+  } catch (error) { next(error); }
+};
+
+// =========================================================
+// UPDATE USER PAGE ACCESS
+// =========================================================
+const updateUserPageAccess = async (req, res, next) => {
+  try {
+    const userId = Number(req.params.id);
+    if (!Number.isInteger(userId) || userId <= 0) { const error = new Error("Invalid user ID"); error.statusCode = 400; throw error; }
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) { const error = new Error("User not found"); error.statusCode = 404; throw error; }
+    const { pages } = req.body;
+    if (!Array.isArray(pages)) { const error = new Error("pages must be an array"); error.statusCode = 400; throw error; }
+    await logAudit(req, "users", "edit_user", `Updated page access for user #${userId}`);
+    res.status(200).json({ success: true, data: { userId, pages } });
+  } catch (error) { next(error); }
+};
+
 module.exports = {
   getUsers,
   createUser,
@@ -382,4 +411,6 @@ module.exports = {
   updateUserStatus,
   getUserPermissions,
   deleteUser,
+  getUserById,
+  updateUserPageAccess,
 };

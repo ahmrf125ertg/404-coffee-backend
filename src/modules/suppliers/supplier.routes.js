@@ -9,6 +9,8 @@ const {
   createSupplier,
   updateSupplier,
   deleteSupplier,
+  getSupplierOptions,
+  getSupplierTransactions,
 } = require("./supplier.controller");
 
 const router = express.Router();
@@ -18,6 +20,13 @@ router.get(
   authMiddleware,
   requirePermission("suppliers", "view_suppliers"),
   getSuppliers
+);
+
+router.get(
+  "/options",
+  authMiddleware,
+  requirePermission("suppliers", "view_suppliers"),
+  getSupplierOptions
 );
 
 router.get(
@@ -46,6 +55,13 @@ router.delete(
   authMiddleware,
   requirePermission("suppliers", "delete_supplier"),
   deleteSupplier
+);
+
+router.get(
+  "/:id/transactions",
+  authMiddleware,
+  requirePermission("suppliers", "view_suppliers"),
+  getSupplierTransactions
 );
 
 module.exports = router;

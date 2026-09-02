@@ -6,6 +6,7 @@ const { requirePermission } = require("../../middlewares/permission.middleware")
 const {
   getSales,
   getSaleById,
+  getSalesSummary,
   createSale,
   updateSale,
   deleteSale,
@@ -20,6 +21,13 @@ router.get(
   authMiddleware,
   requirePermission("sales", "view_sales_history"),
   getSales
+);
+
+router.get(
+  "/summary",
+  authMiddleware,
+  requirePermission("sales", "view_sales_history"),
+  getSalesSummary
 );
 
 router.get(

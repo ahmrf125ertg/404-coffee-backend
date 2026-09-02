@@ -113,10 +113,30 @@ const deleteSupplier = async (req, res, next) => {
 };
 
 
+// Get supplier options
+const getSupplierOptions = async (req, res, next) => {
+    try {
+        const options = await supplierService.getSupplierOptions(req.query);
+        res.status(200).json({ success: true, data: options });
+    } catch (error) { next(error); }
+};
+
+// Get supplier transactions
+const getSupplierTransactions = async (req, res, next) => {
+    try {
+        const { page, pageSize } = parsePagination(req.query);
+        const { items, total, summary } = await supplierService.getSupplierTransactions(req.params.id, req.query);
+        res.status(200).json({ success: true, data: items, summary, pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } });
+    } catch (error) { next(error); }
+};
+
+
 module.exports = {
     getSuppliers,
     getSupplierById,
     createSupplier,
     updateSupplier,
     deleteSupplier,
+    getSupplierOptions,
+    getSupplierTransactions,
 };

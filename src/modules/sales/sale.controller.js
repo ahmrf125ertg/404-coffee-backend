@@ -111,9 +111,17 @@ const deleteSale = async (req, res, next) => {
     }
 };
 
+const getSalesSummary = async (req, res, next) => {
+    try {
+        const summary = await saleService.getSalesSummary(req.query);
+        res.status(200).json({ success: true, data: summary });
+    } catch (error) { next(error); }
+};
+
 module.exports = {
     getSales,
     getSaleById,
+    getSalesSummary,
     createSale,
     updateSale,
     deleteSale,

@@ -61,6 +61,46 @@ router.patch(
   orderController.closeTableOrder
 );
 
+// Table details
+router.get(
+  "/tables/:tableNumber/details",
+  authMiddleware,
+  requirePermission("orders", "view_orders"),
+  orderController.getTableDetails
+);
+
+// Table orders (create order for table)
+router.post(
+  "/tables/:tableNumber/orders",
+  authMiddleware,
+  requirePermission("orders", "create_order"),
+  orderController.createTableOrder
+);
+
+// Add items to table
+router.post(
+  "/tables/:tableNumber/items",
+  authMiddleware,
+  requirePermission("orders", "create_order"),
+  orderController.addTableItems
+);
+
+// Table checkout
+router.post(
+  "/tables/:tableNumber/checkout",
+  authMiddleware,
+  requirePermission("orders", "edit_order"),
+  orderController.checkoutTable
+);
+
+// Table history
+router.get(
+  "/tables/:tableNumber/history",
+  authMiddleware,
+  requirePermission("orders", "view_orders"),
+  orderController.getTableHistory
+);
+
 // Get order by ID
 router.get(
   "/:id",
@@ -92,6 +132,54 @@ router.get(
   authMiddleware,
   requirePermission("orders", "view_orders"),
   orderController.getOrderTracking
+);
+
+// Cancel order
+router.post(
+  "/:id/cancel",
+  authMiddleware,
+  requirePermission("orders", "edit_order"),
+  orderController.cancelOrder
+);
+
+// Order invoice
+router.get(
+  "/:id/invoice",
+  authMiddleware,
+  requirePermission("orders", "view_orders"),
+  orderController.getOrderInvoice
+);
+
+// Order events
+router.get(
+  "/:id/events",
+  authMiddleware,
+  requirePermission("orders", "view_orders"),
+  orderController.getOrderEvents
+);
+
+// Preparation start
+router.post(
+  "/:id/preparation/start",
+  authMiddleware,
+  requirePermission("orders", "edit_order"),
+  orderController.startPreparation
+);
+
+// Item ready
+router.post(
+  "/:id/items/:itemId/ready",
+  authMiddleware,
+  requirePermission("orders", "edit_order"),
+  orderController.markItemReady
+);
+
+// Item reopen
+router.post(
+  "/:id/items/:itemId/reopen",
+  authMiddleware,
+  requirePermission("orders", "edit_order"),
+  orderController.reopenItem
 );
 
 // Update order status (bulk)

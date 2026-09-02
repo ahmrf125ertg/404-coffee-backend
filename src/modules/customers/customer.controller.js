@@ -143,6 +143,29 @@ const getCustomerOrders = async (req, res, next) => {
     }
 };
 
+// ============================================================
+// Lookup customer by phone
+// ============================================================
+
+const lookupCustomer = async (req, res, next) => {
+    try {
+        const customer = await customerService.lookupCustomer(req.query.phone);
+        res.status(200).json({ success: true, data: customer });
+    } catch (error) { next(error); }
+};
+
+// ============================================================
+// Merge customers
+// ============================================================
+
+const mergeCustomers = async (req, res, next) => {
+    try {
+        const result = await customerService.mergeCustomers(req.params.id, req.body.duplicateCustomerId);
+        await logAudit(req, "customers", "edit_customer", `Merged customer ${req.body.duplicateCustomerId} into ${req.params.id}`);
+        res.status(200).json({ success: true, message: "Customers merged successfully", data: result });
+    } catch (error) { next(error); }
+};
+
 module.exports = {
     getCustomers,
     getCustomerById,
@@ -150,4 +173,6 @@ module.exports = {
     updateCustomer,
     deleteCustomer,
     getCustomerOrders,
+    lookupCustomer,
+    mergeCustomers,
 };

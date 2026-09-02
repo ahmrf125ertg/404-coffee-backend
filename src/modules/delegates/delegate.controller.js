@@ -123,6 +123,35 @@ const deleteDelegate = async (req, res, next) => {
 };
 
 
+// Get delegate options
+const getDelegateOptions = async (req, res, next) => {
+    try {
+        const options = await delegateService.getDelegateOptions(req.query);
+        res.status(200).json({ success: true, data: options });
+    } catch (error) { next(error); }
+};
+
+
+// Get delegate orders
+const getDelegateOrders = async (req, res, next) => {
+    try {
+        const { page, pageSize } = parsePagination(req.query);
+        const { items, total } = await delegateService.getDelegateOrders(req.params.id, req.query);
+        res.status(200).json({ success: true, data: items, pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } });
+    } catch (error) { next(error); }
+};
+
+
+// Get delegate collections
+const getDelegateCollections = async (req, res, next) => {
+    try {
+        const { page, pageSize } = parsePagination(req.query);
+        const { items, total } = await delegateService.getDelegateCollections(req.params.id, req.query);
+        res.status(200).json({ success: true, data: items, pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } });
+    } catch (error) { next(error); }
+};
+
+
 module.exports = {
     getDelegates,
     getDelegateById,
@@ -130,4 +159,7 @@ module.exports = {
     updateDelegate,
     updateDelegateStatus,
     deleteDelegate,
+    getDelegateOptions,
+    getDelegateOrders,
+    getDelegateCollections,
 };
