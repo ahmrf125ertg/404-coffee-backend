@@ -391,15 +391,20 @@ model Order {
   id           Int      @id @default(autoincrement())
   orderNumber  String   @unique
   customerName String?
+  trackingToken String? @unique
 
   customerId Int?
   delegateId Int?
 
-  orderType    OrderType   @default(tables)
-  status       OrderStatus @default(PENDING)
-  table        String?
+  orderType       OrderType   @default(tables)
+  channel         String?
+  fulfillmentType String?
+  status          OrderStatus @default(PENDING)
+  table           String?
 
   phone String?
+
+  deliveryAddress Json?
 
   subtotal Decimal 
   discount Decimal @default(0) 
@@ -424,6 +429,7 @@ model Order {
   @@index([paymentMethod])
   @@index([createdAt])
   @@index([orderNumber])
+  @@index([trackingToken])
   @@map("orders")
 }
 

@@ -345,15 +345,16 @@ const buildRole = (role) => ({
 // Login
 // ============================================================
 
-const loginUser = async ({ name, password }) => {
-  if (!name || !password) {
+const loginUser = async ({ name, username, password }) => {
+  const resolvedName = name || username;
+  if (!resolvedName || !password) {
     const error = new Error("Name and password are required");
     error.statusCode = 400;
     throw error;
   }
 
   const user = await prisma.user.findFirst({
-    where: { name },
+    where: { name: resolvedName },
   });
 
   if (!user) {

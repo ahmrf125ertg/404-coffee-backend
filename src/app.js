@@ -31,6 +31,7 @@ const returnRoutes = require("./modules/returns/return.routes");
 const saleRoutes = require("./modules/sales/sale.routes");
 const settingRoutes = require("./modules/settings/setting.routes");
 const supplierRoutes = require("./modules/suppliers/supplier.routes");
+const tableSessionRoutes = require("./modules/table-sessions/table-session.routes");
 const userRoutes = require("./modules/users/user.routes");
 const warningRoutes = require("./modules/warnings/warning.routes");
 
@@ -112,6 +113,7 @@ app.use("/api/returns", returnRoutes);
 app.use("/api/sales", saleRoutes);
 app.use("/api/settings", settingRoutes);
 app.use("/api/suppliers", supplierRoutes);
+app.use("/api/table-sessions", tableSessionRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/warnings", warningRoutes);
 

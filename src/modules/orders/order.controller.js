@@ -7,6 +7,7 @@ const { parsePagination } = require("../../utils/pagination");
 const {
     emitOrderCreated,
     emitOrderItemUpdated,
+    emitOrderUpdated,
 } = require("../../websocket/socket.events");
 
 // ============================================================
@@ -89,6 +90,7 @@ const updateOrder = async (req, res, next) => {
             req.body
         );
 
+        emitOrderUpdated(order);
 
         await logAudit(req, "orders", "edit_order", "Order updated successfully");
         return res.status(200).json({
@@ -173,6 +175,143 @@ const updateOrderItemStatus = async (req, res, next) => {
     }
 };
 
+// ============================================================
+// Get prep orders
+// GET /api/orders/prep
+// ============================================================
+
+const getPrepOrders = async (req, res, next) => {
+    try {
+        const items = await orderService.getPrepOrders();
+        return res.status(200).json({ success: true, data: { items } });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// ============================================================
+// Get table summaries
+// GET /api/orders/tables/summary
+// ============================================================
+
+const getTableSummaries = async (req, res, next) => {
+    try {
+        const data = await orderService.getTableSummaries();
+        return res.status(200).json({ success: true, data });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// ============================================================
+// Update order status (bulk)
+// PATCH /api/orders/:id/status
+// ============================================================
+
+const updateOrderStatus = async (req, res, next) => {
+    try {
+        const order = await orderService.updateOrderStatus(
+            req.params.id,
+            req.body.status
+        );
+
+        emitOrderUpdated(order);
+
+        await logAudit(req, "orders", "edit_order", `Order ${order.orderNumber} status changed to ${order.status}`);
+        return res.status(200).json({
+            success: true,
+            message: "Order status updated",
+            data: order,
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// ============================================================
+// Hand over order to delegate
+// PATCH /api/orders/:id/hand-over-delegate
+// ============================================================
+
+const handOverOrderToDelegate = async (req, res, next) => {
+    try {
+        const order = await orderService.handOverOrderToDelegate(
+            req.params.id,
+            req.body.delegateId
+        );
+
+        emitOrderUpdated(order);
+
+        await logAudit(req, "orders", "edit_order", `Order ${order.orderNumber} handed over to delegate`);
+        return res.status(200).json({
+            success: true,
+            message: "Order handed over to delegate",
+            data: order,
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// ============================================================
+// Close table
+// PATCH /api/orders/tables/:tableNumber/close
+// ============================================================
+
+const closeTableOrder = async (req, res, next) => {
+    try {
+        const orders = await orderService.closeTableOrder(
+            req.params.tableNumber
+        );
+
+        for (const order of orders) {
+            emitOrderUpdated(order);
+        }
+
+        await logAudit(req, "orders", "edit_order", `Table ${req.params.tableNumber} closed`);
+        return res.status(200).json({
+            success: true,
+            message: "Table closed successfully",
+            data: orders,
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// ============================================================
+// Get public order tracking (no auth)
+// GET /api/orders/public/:code/tracking
+// ============================================================
+
+const getPublicOrderTracking = async (req, res, next) => {
+    try {
+        const tracking = await orderService.getPublicOrderTracking(
+            req.params.code,
+            req.query.token
+        );
+        return res.status(200).json({ success: true, data: tracking });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// ============================================================
+// Get active table order
+// GET /api/table-sessions/:tableNumber/active-order
+// ============================================================
+
+const getActiveTableOrder = async (req, res, next) => {
+    try {
+        const order = await orderService.getActiveTableOrder(
+            req.params.tableNumber
+        );
+        return res.status(200).json({ success: true, data: order });
+    } catch (error) {
+        next(error);
+    }
+};
+
 module.exports = {
     createOrder,
     getOrders,
@@ -181,4 +320,11 @@ module.exports = {
     deleteOrder,
     getOrderTracking,
     updateOrderItemStatus,
+    getPrepOrders,
+    getTableSummaries,
+    updateOrderStatus,
+    handOverOrderToDelegate,
+    closeTableOrder,
+    getPublicOrderTracking,
+    getActiveTableOrder,
 };

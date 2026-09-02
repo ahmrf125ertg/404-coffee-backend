@@ -8,9 +8,13 @@ const ORDER_ROOM = "orders";
 const KITCHEN_ROOM = "kitchen";
 
 const initSocket = (httpServer) => {
+  const corsOrigins = process.env.CORS_ORIGINS
+    ? process.env.CORS_ORIGINS.split(",")
+    : ["http://localhost:3000", "http://localhost:5173", "http://localhost:5174"];
+
   io = new Server(httpServer, {
     cors: {
-      origin: "*",
+      origin: corsOrigins,
       methods: ["GET", "POST"],
     },
   });
