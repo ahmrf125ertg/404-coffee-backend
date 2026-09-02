@@ -2,6 +2,7 @@ const prisma = require("../../lib/prisma");
 
 const { parsePagination } = require("../../utils/pagination");
 const crypto = require("crypto");
+const { generateBarcode } = require("../../utils/barcode");
 
 // ============================================================
 // Helpers
@@ -133,41 +134,45 @@ const validateOrderEnums = ({
 };
 
 // ============================================================
-// Order number generation
+// Order number generation (with retry for concurrency safety)
 // ============================================================
 
+const MAX_RETRIES = 5;
+
 const generateOrderNumber = async (orderType, tableNumber) => {
-    if (orderType === "online") {
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+        const prefix = orderType === "online" ? "A-" : `T${tableNumber || "1"}-`;
+
         const lastOrder = await prisma.order.findFirst({
-            where: { orderNumber: { startsWith: "A-" } },
+            where: { orderNumber: { startsWith: prefix } },
             orderBy: { orderNumber: "desc" },
         });
 
         let seq = 1;
         if (lastOrder) {
-            const lastSeq = parseInt(lastOrder.orderNumber.slice(2), 10);
+            const lastSeq = parseInt(lastOrder.orderNumber.split("-")[1], 10);
             seq = lastSeq + 1;
         }
 
-        return `A-${String(seq).padStart(4, "0")}`;
+        const orderNumber = orderType === "online"
+            ? `A-${String(seq).padStart(4, "0")}`
+            : `${prefix}${seq}`;
+
+        // Check if this order number already exists (race condition guard)
+        const existing = await prisma.order.findUnique({
+            where: { orderNumber },
+            select: { id: true },
+        });
+
+        if (!existing) {
+            return orderNumber;
+        }
+        // If collision, retry with next sequence
     }
 
-    // tables order: T{table}-{seq}
-    const tableNum = tableNumber || "1";
-    const prefix = `T${tableNum}-`;
-
-    const lastOrder = await prisma.order.findFirst({
-        where: { orderNumber: { startsWith: prefix } },
-        orderBy: { orderNumber: "desc" },
-    });
-
-    let seq = 1;
-    if (lastOrder) {
-        const lastSeq = parseInt(lastOrder.orderNumber.split("-")[1], 10);
-        seq = lastSeq + 1;
-    }
-
-    return `${prefix}${seq}`;
+    // Fallback: use timestamp-based unique suffix
+    const ts = Date.now().toString(36).toUpperCase();
+    return orderType === "online" ? `A-${ts}` : `T${tableNumber || "1"}-${ts}`;
 };
 
 // ============================================================
@@ -330,7 +335,10 @@ const createOrder = async (data) => {
         include: getOrderInclude,
     });
 
-    return order;
+    // Generate barcode for the order number
+    const barcode = await generateBarcode(orderNumber);
+
+    return { ...order, barcode };
 };
 
 // ============================================================

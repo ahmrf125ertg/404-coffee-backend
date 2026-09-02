@@ -68,7 +68,6 @@ const getProducts = async (filters = {}) => {
   }
 
   if (minPrice !== undefined || maxPrice !== undefined) {
-    where.sizes = {};
     const priceFilter = {};
     if (minPrice !== undefined) {
       const min = Number(minPrice);
@@ -83,7 +82,7 @@ const getProducts = async (filters = {}) => {
       }
     }
     if (Object.keys(priceFilter).length > 0) {
-      where.sizes.finalPrice = priceFilter;
+      where.sizes = { some: { finalPrice: priceFilter } };
     }
   }
 
