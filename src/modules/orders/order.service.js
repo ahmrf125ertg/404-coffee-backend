@@ -870,35 +870,131 @@ const getTableSummaries = async () => {
 };
 
 // ============================================================
-// Update order status (bulk)
+// Update order status (with inventoryEffect/financialEffect)
 // ============================================================
 
-const updateOrderStatus = async (id, status) => {
+const updateOrderStatus = async (id, data) => {
     const orderId = Number(id);
+    const { status, reason, delegateId } = typeof data === "string" ? { status: data } : data;
 
-    if (!Number.isInteger(orderId) || orderId <= 0) {
-        throw httpError("Invalid order ID");
+    if (!Number.isInteger(orderId) || orderId <= 0) throw httpError("Invalid order ID");
+    if (!status || !ALLOWED_STATUSES.includes(status)) throw httpError(`Invalid status. Allowed: ${ALLOWED_STATUSES.join(", ")}`);
+
+    const existingOrder = await prisma.order.findUnique({ where: { id: orderId } });
+    if (!existingOrder) throw httpError("Order not found", 404);
+
+    const validTransitions = {
+        PENDING: ["PREPARING", "CANCELLED"],
+        PREPARING: ["READY", "CANCELLED"],
+        READY: ["COMPLETED", "CANCELLED"],
+        COMPLETED: [],
+        CANCELLED: [],
+    };
+
+    if (!validTransitions[existingOrder.status]?.includes(status)) {
+        throw httpError(`Cannot transition from ${existingOrder.status} to ${status}`);
     }
 
-    if (!status || !ALLOWED_STATUSES.includes(status)) {
-        throw httpError(`Invalid status. Allowed: ${ALLOWED_STATUSES.join(", ")}`);
-    }
+    const result = await prisma.$transaction(async (tx) => {
+        const updateData = { status, version: { increment: 1 } };
+        if (delegateId !== undefined) updateData.delegateId = delegateId ? Number(delegateId) : existingOrder.delegateId;
 
-    const existingOrder = await prisma.order.findUnique({
-        where: { id: orderId },
+        const order = await tx.order.update({
+            where: { id: orderId },
+            data: updateData,
+            include: getOrderInclude,
+        });
+
+        let inventoryEffect = null;
+        let financialEffect = null;
+
+        // PREPARING: deduct inventory
+        if (status === "PREPARING" && existingOrder.status === "PENDING") {
+            inventoryEffect = await deductInventoryForOrder(tx, orderId);
+        }
+
+        // COMPLETED: create sale + record revenue
+        if (status === "COMPLETED" && existingOrder.status !== "COMPLETED") {
+            const sale = await tx.sale.create({
+                data: {
+                    customerId: existingOrder.customerId,
+                    subtotal: existingOrder.subtotal,
+                    discount: existingOrder.discount,
+                    total: existingOrder.total,
+                    paymentMethod: existingOrder.paymentMethod,
+                    status: "COMPLETED",
+                },
+            });
+
+            const orderItems = await tx.orderItem.findMany({ where: { orderId } });
+            for (const item of orderItems) {
+                await tx.saleItem.create({
+                    data: {
+                        saleId: sale.id,
+                        productId: item.productId,
+                        productSizeId: item.productSizeId,
+                        quantity: item.quantity,
+                        unitPrice: item.unitPrice,
+                        totalPrice: item.totalPrice,
+                    },
+                });
+            }
+
+            financialEffect = { saleId: sale.id, total: Number(order.total), paymentMethod: order.paymentMethod };
+        }
+
+        // CANCELLED: restore inventory
+        if (status === "CANCELLED" && existingOrder.status !== "CANCELLED") {
+            inventoryEffect = await restoreInventoryForOrder(tx, orderId);
+        }
+
+        return { order, inventoryEffect, financialEffect };
     });
 
-    if (!existingOrder) {
-        throw httpError("Order not found", 404);
-    }
+    return result;
+};
 
-    const order = await prisma.order.update({
-        where: { id: orderId },
-        data: { status },
-        include: getOrderInclude,
+// ============================================================
+// Deduct inventory for order (ingredients from raw materials)
+// ============================================================
+
+const deductInventoryForOrder = async (tx, orderId) => {
+    const items = await tx.orderItem.findMany({
+        where: { orderId },
+        include: {
+            productSize: {
+                include: { ingredients: true },
+            },
+        },
     });
 
-    return order;
+    const deductions = [];
+
+    for (const item of items) {
+        const quantity = Number(item.quantity);
+        for (const ing of item.productSize.ingredients) {
+            const ingredientQty = Number(ing.quantity) * quantity;
+            // Find batch with enough stock
+            const batch = await tx.rawMaterialBatch.findFirst({
+                where: { rawMaterialId: ing.rawMaterialId, quantity: { gte: ingredientQty } },
+                orderBy: { addedAt: "asc" },
+            });
+
+            if (batch) {
+                await tx.rawMaterialBatch.update({
+                    where: { id: batch.id },
+                    data: { quantity: { decrement: ingredientQty } },
+                });
+                deductions.push({
+                    rawMaterialId: ing.rawMaterialId,
+                    batchId: batch.id,
+                    deductedQty: ingredientQty,
+                });
+            }
+        }
+    }
+
+    return deductions;
 };
 
 // ============================================================
@@ -1041,30 +1137,153 @@ const getActiveTableOrder = async (tableNumber) => {
 };
 
 // ============================================================
-// Cancel order
+// Calculate cost for an order (sum of ingredient costs)
 // ============================================================
 
-const cancelOrder = async (id, reason) => {
-    const orderId = Number(id);
-    if (!Number.isInteger(orderId) || orderId <= 0) throw httpError("Invalid order ID");
-    const existing = await prisma.order.findUnique({ where: { id: orderId } });
-    if (!existing) throw httpError("Order not found", 404);
-    if (existing.status === "COMPLETED" || existing.status === "CANCELLED") throw httpError("Cannot cancel a completed or already cancelled order");
-    const order = await prisma.order.update({ where: { id: orderId }, data: { status: "CANCELLED" }, include: getOrderInclude });
-    return order;
+const calculateOrderCost = async (orderId) => {
+    const items = await prisma.orderItem.findMany({
+        where: { orderId },
+        include: {
+            productSize: {
+                include: {
+                    ingredients: {
+                        include: {
+                            rawMaterial: {
+                                include: { batches: { orderBy: { addedAt: "desc" }, take: 1 } },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    });
+
+    let costTotal = 0;
+    for (const item of items) {
+        const quantity = Number(item.quantity);
+        for (const ing of item.productSize.ingredients) {
+            const ingredientQty = Number(ing.quantity);
+            const latestBatch = ing.rawMaterial.batches[0];
+            const pricePerUnit = latestBatch ? Number(latestBatch.pricePerUnit) : 0;
+            costTotal += ingredientQty * quantity * pricePerUnit;
+        }
+    }
+
+    return costTotal;
 };
 
 // ============================================================
-// Get order invoice
+// Restore inventory for cancelled order
+// ============================================================
+
+const restoreInventoryForOrder = async (tx, orderId) => {
+    const items = await tx.orderItem.findMany({
+        where: { orderId },
+        include: {
+            productSize: {
+                include: {
+                    ingredients: true,
+                },
+            },
+        },
+    });
+
+    const restoredBatches = [];
+
+    for (const item of items) {
+        const quantity = Number(item.quantity);
+        for (const ing of item.productSize.ingredients) {
+            const ingredientQty = Number(ing.quantity) * quantity;
+            // Find the most recent batch with stock
+            const batch = await tx.rawMaterialBatch.findFirst({
+                where: { rawMaterialId: ing.rawMaterialId, quantity: { gt: 0 } },
+                orderBy: { addedAt: "desc" },
+            });
+
+            if (batch) {
+                await tx.rawMaterialBatch.update({
+                    where: { id: batch.id },
+                    data: { quantity: { increment: ingredientQty } },
+                });
+                restoredBatches.push({
+                    rawMaterialId: ing.rawMaterialId,
+                    batchId: batch.id,
+                    restoredQty: ingredientQty,
+                });
+            }
+        }
+    }
+
+    return restoredBatches;
+};
+
+// ============================================================
+// Cancel order (with optional restoreInventory)
+// ============================================================
+
+const cancelOrder = async (id, data = {}) => {
+    const orderId = Number(id);
+    const { reason = "Cancelled by admin", restoreInventory = true } = typeof data === "string" ? { reason: data } : data;
+
+    if (!Number.isInteger(orderId) || orderId <= 0) throw httpError("Invalid order ID");
+
+    const existing = await prisma.order.findUnique({ where: { id: orderId } });
+    if (!existing) throw httpError("Order not found", 404);
+    if (existing.status === "COMPLETED" || existing.status === "CANCELLED") {
+        throw httpError("Cannot cancel a completed or already cancelled order");
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+        const order = await tx.order.update({
+            where: { id: orderId },
+            data: { status: "CANCELLED", version: { increment: 1 } },
+            include: getOrderInclude,
+        });
+
+        let restoredBatches = [];
+        if (restoreInventory) {
+            restoredBatches = await restoreInventoryForOrder(tx, orderId);
+        }
+
+        return { order, restoredBatches };
+    });
+
+    return result;
+};
+
+// ============================================================
+// Get order invoice (with costTotal/profitTotal)
 // ============================================================
 
 const getOrderInvoice = async (id) => {
     const orderId = Number(id);
     if (!Number.isInteger(orderId) || orderId <= 0) throw httpError("Invalid order ID");
-    const order = await prisma.order.findUnique({ where: { id: orderId }, include: { ...getOrderInclude, sale: true } });
+    const order = await prisma.order.findUnique({ where: { id: orderId }, include: getOrderInclude });
     if (!order) throw httpError("Order not found", 404);
-    const items = order.items.map(i => ({ name: i.product.name, sizeName: i.productSize.name, quantity: Number(i.quantity), unitPrice: Number(i.unitPrice), totalPrice: Number(i.totalPrice) }));
-    return { invoiceNumber: order.orderNumber, items, subtotal: Number(order.subtotal), discount: Number(order.discount), total: Number(order.total), paymentMethod: order.paymentMethod, customer: order.customer, completedAt: order.updatedAt };
+
+    const items = order.items.map(i => ({
+        name: i.product.name,
+        sizeName: i.productSize.name,
+        quantity: Number(i.quantity),
+        unitPrice: Number(i.unitPrice),
+        totalPrice: Number(i.totalPrice),
+    }));
+
+    const costTotal = await calculateOrderCost(orderId);
+    const profitTotal = Number(order.total) - costTotal;
+
+    return {
+        invoiceNumber: order.orderNumber,
+        items,
+        subtotal: Number(order.subtotal),
+        discount: Number(order.discount),
+        total: Number(order.total),
+        costTotal,
+        profitTotal,
+        payment: order.paymentMethod,
+        customer: order.customer,
+        completedAt: order.updatedAt,
+    };
 };
 
 // ============================================================
@@ -1174,20 +1393,104 @@ const addTableItems = async (tableNumber, data) => {
 };
 
 // ============================================================
-// Table checkout
+// Table checkout (with invoice + sale)
 // ============================================================
 
 const checkoutTable = async (tableNumber, data) => {
     if (!tableNumber) throw httpError("Table number is required");
-    const activeOrders = await prisma.order.findMany({ where: { orderType: "tables", table: tableNumber, status: { notIn: ["COMPLETED", "CANCELLED"] } } });
+    const { paymentMethod, discount, actualPaid } = data;
+    const activeOrders = await prisma.order.findMany({
+        where: { orderType: "tables", table: tableNumber, status: { notIn: ["COMPLETED", "CANCELLED"] } },
+        include: getOrderInclude,
+    });
     if (activeOrders.length === 0) throw httpError("No active orders for this table", 404);
-    const updatedOrders = [];
-    for (const o of activeOrders) {
-        const updated = await prisma.order.update({ where: { id: o.id }, data: { status: "COMPLETED", paymentMethod: data.paymentMethod || o.paymentMethod }, include: getOrderInclude });
-        updatedOrders.push(updated);
-    }
-    const totalPaid = updatedOrders.reduce((s, o) => s + Number(o.total), 0);
-    return { order: updatedOrders[0], orders: updatedOrders, totalPaid, tableStatus: "EMPTY" };
+
+    const result = await prisma.$transaction(async (tx) => {
+        const updatedOrders = [];
+        let totalPaid = 0;
+
+        for (const o of activeOrders) {
+            const updated = await tx.order.update({
+                where: { id: o.id },
+                data: {
+                    status: "COMPLETED",
+                    paymentMethod: paymentMethod || o.paymentMethod,
+                    version: { increment: 1 },
+                },
+                include: getOrderInclude,
+            });
+            totalPaid += Number(updated.total);
+            updatedOrders.push(updated);
+        }
+
+        // Create sale for the checkout
+        const firstOrder = updatedOrders[0];
+        const sale = await tx.sale.create({
+            data: {
+                customerId: firstOrder.customerId,
+                subtotal: updatedOrders.reduce((s, o) => s + Number(o.subtotal), 0),
+                discount: discount || 0,
+                total: totalPaid - (discount || 0),
+                paymentMethod: paymentMethod || firstOrder.paymentMethod,
+                status: "COMPLETED",
+            },
+        });
+
+        // Create sale items for all orders
+        for (const o of updatedOrders) {
+            const orderItems = await tx.orderItem.findMany({ where: { orderId: o.id } });
+            for (const item of orderItems) {
+                await tx.saleItem.create({
+                    data: {
+                        saleId: sale.id,
+                        productId: item.productId,
+                        productSizeId: item.productSizeId,
+                        quantity: item.quantity,
+                        unitPrice: item.unitPrice,
+                        totalPrice: item.totalPrice,
+                    },
+                });
+            }
+        }
+
+        // Build invoice
+        const allItems = [];
+        for (const o of updatedOrders) {
+            const items = await tx.orderItem.findMany({
+                where: { orderId: o.id },
+                include: { product: true, productSize: true },
+            });
+            for (const i of items) {
+                allItems.push({
+                    name: i.product.name,
+                    sizeName: i.productSize.name,
+                    quantity: Number(i.quantity),
+                    unitPrice: Number(i.unitPrice),
+                    totalPrice: Number(i.totalPrice),
+                });
+            }
+        }
+
+        const invoice = {
+            invoiceNumber: firstOrder.orderNumber,
+            items: allItems,
+            subtotal: updatedOrders.reduce((s, o) => s + Number(o.subtotal), 0),
+            discount: discount || 0,
+            total: totalPaid - (discount || 0),
+            paymentMethod: paymentMethod || firstOrder.paymentMethod,
+        };
+
+        return {
+            order: updatedOrders[0],
+            orders: updatedOrders,
+            invoice,
+            sale,
+            totalPaid,
+            tableStatus: "EMPTY",
+        };
+    });
+
+    return result;
 };
 
 // ============================================================
@@ -1203,6 +1506,73 @@ const getTableHistory = async (tableNumber, filters = {}) => {
         prisma.order.count({ where }),
     ]);
     return { items, total };
+};
+
+// ============================================================
+// Complete delivery (delegate confirms delivery)
+// ============================================================
+
+const completeDelivery = async (orderId, data = {}) => {
+    const orderIdNum = Number(orderId);
+    const { collectedAmount, notes } = data;
+
+    if (!Number.isInteger(orderIdNum) || orderIdNum <= 0) throw httpError("Invalid order ID");
+
+    const existing = await prisma.order.findUnique({ where: { id: orderIdNum } });
+    if (!existing) throw httpError("Order not found", 404);
+    if (existing.status === "COMPLETED" || existing.status === "CANCELLED") {
+        throw httpError("Order is already completed or cancelled");
+    }
+    if (existing.status !== "READY") {
+        throw httpError("Order must be READY before completing delivery");
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+        const order = await tx.order.update({
+            where: { id: orderIdNum },
+            data: {
+                status: "COMPLETED",
+                deliveredAt: new Date(),
+                version: { increment: 1 },
+                notes: notes || existing.notes,
+            },
+            include: getOrderInclude,
+        });
+
+        // Create sale
+        const sale = await tx.sale.create({
+            data: {
+                customerId: existing.customerId,
+                subtotal: existing.subtotal,
+                discount: existing.discount,
+                total: existing.total,
+                paymentMethod: existing.paymentMethod,
+                status: "COMPLETED",
+            },
+        });
+
+        // Create sale items
+        const orderItems = await tx.orderItem.findMany({ where: { orderId: orderIdNum } });
+        for (const item of orderItems) {
+            await tx.saleItem.create({
+                data: {
+                    saleId: sale.id,
+                    productId: item.productId,
+                    productSizeId: item.productSizeId,
+                    quantity: item.quantity,
+                    unitPrice: item.unitPrice,
+                    totalPrice: item.totalPrice,
+                },
+            });
+        }
+
+        // Deduct inventory
+        await deductInventoryForOrder(tx, orderIdNum);
+
+        return { order, sale, deliveredAt: order.deliveredAt };
+    });
+
+    return result;
 };
 
 module.exports = {
@@ -1231,4 +1601,5 @@ module.exports = {
     addTableItems,
     checkoutTable,
     getTableHistory,
+    completeDelivery,
 };

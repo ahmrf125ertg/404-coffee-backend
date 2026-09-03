@@ -142,6 +142,14 @@ router.post(
   orderController.cancelOrder
 );
 
+// Complete delivery
+router.post(
+  "/:id/delivery/complete",
+  authMiddleware,
+  requirePermission("orders", "edit_order"),
+  orderController.completeDelivery
+);
+
 // Order invoice
 router.get(
   "/:id/invoice",

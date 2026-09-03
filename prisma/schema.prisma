@@ -425,6 +425,10 @@ model Order {
 
   notes String?
 
+  version    Int      @default(1)
+  deliveredAt DateTime?
+  saleId     Int?
+
   customer Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
   delegate Delegate? @relation(fields: [delegateId], references: [id], onDelete: SetNull)
 

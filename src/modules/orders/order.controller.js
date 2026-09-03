@@ -204,24 +204,19 @@ const getTableSummaries = async (req, res, next) => {
 };
 
 // ============================================================
-// Update order status (bulk)
+// Update order status (with inventoryEffect/financialEffect)
 // PATCH /api/orders/:id/status
 // ============================================================
 
 const updateOrderStatus = async (req, res, next) => {
     try {
-        const order = await orderService.updateOrderStatus(
-            req.params.id,
-            req.body.status
-        );
-
-        emitOrderUpdated(order);
-
-        await logAudit(req, "orders", "edit_order", `Order ${order.orderNumber} status changed to ${order.status}`);
+        const result = await orderService.updateOrderStatus(req.params.id, req.body);
+        emitOrderUpdated(result.order);
+        await logAudit(req, "orders", "edit_order", `Order ${result.order.orderNumber} status changed to ${result.order.status}`);
         return res.status(200).json({
             success: true,
             message: "Order status updated",
-            data: order,
+            data: result,
         });
     } catch (error) {
         next(error);
@@ -297,16 +292,28 @@ const getPublicOrderTracking = async (req, res, next) => {
 };
 
 // ============================================================
-// Cancel order
+// Cancel order (with restoreInventory)
 // POST /api/orders/:id/cancel
 // ============================================================
 
 const cancelOrder = async (req, res, next) => {
     try {
-        const order = await orderService.cancelOrder(req.params.id, req.body.reason || "Cancelled by admin");
-        emitOrderUpdated(order);
-        await logAudit(req, "orders", "edit_order", `Order ${order.orderNumber} cancelled`);
-        return res.status(200).json({ success: true, message: "Order cancelled", data: order });
+        const result = await orderService.cancelOrder(req.params.id, {
+            reason: req.body.reason || "Cancelled by admin",
+            restoreInventory: req.body.restoreInventory !== false,
+        });
+        emitOrderUpdated(result.order);
+        await logAudit(req, "orders", "edit_order", `Order ${result.order.orderNumber} cancelled`);
+        return res.status(200).json({
+            success: true,
+            message: "Order cancelled",
+            data: {
+                order: result.order,
+                status: "CANCELLED",
+                releasedReservations: result.inventoryEffect || [],
+                restoredBatches: result.restoredBatches || [],
+            },
+        });
     } catch (error) { next(error); }
 };
 
@@ -457,6 +464,28 @@ const getActiveTableOrder = async (req, res, next) => {
     }
 };
 
+// ============================================================
+// Complete delivery
+// POST /api/orders/:id/delivery/complete
+// ============================================================
+
+const completeDelivery = async (req, res, next) => {
+    try {
+        const result = await orderService.completeDelivery(req.params.id, req.body);
+        emitOrderUpdated(result.order);
+        await logAudit(req, "orders", "edit_order", `Order ${result.order.orderNumber} delivery completed`);
+        return res.status(200).json({
+            success: true,
+            message: "Delivery completed",
+            data: {
+                order: result.order,
+                deliveredAt: result.deliveredAt,
+                sale: result.sale,
+            },
+        });
+    } catch (error) { next(error); }
+};
+
 module.exports = {
     createOrder,
     getOrders,
@@ -483,4 +512,5 @@ module.exports = {
     addTableItems,
     checkoutTable,
     getTableHistory,
+    completeDelivery,
 };
