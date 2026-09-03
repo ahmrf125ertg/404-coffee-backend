@@ -255,7 +255,7 @@ const deleteDelegate = async (id) => {
 
 // Get delegate options
 const getDelegateOptions = async (query = {}) => {
-    const where = {};
+    const where = { isActive: true };
     if (query.search && query.search.trim()) {
         where.OR = [
             { name: { contains: query.search.trim(), mode: "insensitive" } },
@@ -275,11 +275,26 @@ const getDelegateOrders = async (delegateId, filters = {}) => {
     const { skip, take } = parsePagination(filters);
     const where = { delegateId: id };
     if (filters.status) where.status = filters.status;
-    const [items, total] = await Promise.all([
+    if (filters.scope === "current") {
+        where.status = { notIn: ["COMPLETED", "CANCELLED"] };
+    } else if (filters.scope === "history") {
+        where.status = { in: ["COMPLETED", "CANCELLED"] };
+    }
+    if (filters.status && filters.scope) {
+        if (filters.scope === "current") {
+            where.status = { notIn: ["COMPLETED", "CANCELLED"], equals: filters.status };
+        } else if (filters.scope === "history") {
+            where.status = { in: ["COMPLETED", "CANCELLED"], equals: filters.status };
+        }
+    }
+    const [items, total, summaryCount, summaryValue] = await Promise.all([
         prisma.order.findMany({ where, include: { items: { include: { product: { select: { id: true, name: true } }, productSize: { select: { id: true, name: true } } } }, customer: true }, orderBy: { createdAt: "desc" }, skip, take }),
         prisma.order.count({ where }),
+        prisma.order.count({ where: { delegateId: id, status: { notIn: ["COMPLETED", "CANCELLED"] } } }),
+        prisma.order.aggregate({ where: { delegateId: id }, _sum: { total: true } }),
     ]);
-    return { items, total };
+    const summary = { currentCount: summaryCount, totalValue: Number(summaryValue._sum.total || 0) };
+    return { items, total, summary };
 };
 
 

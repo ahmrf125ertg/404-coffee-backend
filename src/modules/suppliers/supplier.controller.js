@@ -126,7 +126,7 @@ const getSupplierTransactions = async (req, res, next) => {
     try {
         const { page, pageSize } = parsePagination(req.query);
         const { items, total, summary } = await supplierService.getSupplierTransactions(req.params.id, req.query);
-        res.status(200).json({ success: true, data: items, summary, pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } });
+        res.status(200).json({ success: true, data: items, pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) }, summary });
     } catch (error) { next(error); }
 };
 

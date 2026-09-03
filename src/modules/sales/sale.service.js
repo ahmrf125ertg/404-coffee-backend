@@ -987,20 +987,127 @@ const deleteSale = async (id) => {
 
 const getSalesSummary = async (filters = {}) => {
     const where = {};
+
     if (filters.from || filters.to) {
         where.createdAt = {};
         if (filters.from) where.createdAt.gte = new Date(filters.from);
         if (filters.to) where.createdAt.lte = new Date(filters.to);
     }
-    if (filters.shiftId) where.id = { in: [] };
+
+    if (filters.shiftId) {
+        const shiftId = Number(filters.shiftId);
+        if (Number.isInteger(shiftId) && shiftId > 0) {
+            const transactions = await prisma.cashDrawerTransaction.findMany({
+                where: { shiftId, type: "SALES" },
+                select: { description: true },
+            });
+            const saleIds = transactions
+                .map(t => t.description)
+                .filter(Boolean)
+                .map(d => {
+                    const match = d.match(/sale[:# ]*(\d+)/i);
+                    return match ? Number(match[1]) : null;
+                })
+                .filter(Boolean);
+            if (saleIds.length > 0) {
+                where.id = { in: saleIds };
+            } else {
+                where.id = { in: [] };
+            }
+        }
+    }
+
     const [sales, count] = await Promise.all([
-        prisma.sale.findMany({ where, select: { subtotal: true, discount: true, total: true, items: { select: { unitPrice: true, totalPrice: true, quantity: true, product: { select: { name: true } } } } } }),
+        prisma.sale.findMany({
+            where,
+            select: {
+                subtotal: true,
+                discount: true,
+                total: true,
+                createdAt: true,
+                items: {
+                    select: {
+                        unitPrice: true,
+                        totalPrice: true,
+                        quantity: true,
+                        productSize: {
+                            select: {
+                                basePrice: true,
+                                ingredients: {
+                                    select: {
+                                        quantity: true,
+                                        rawMaterial: {
+                                            select: {
+                                                batches: {
+                                                    select: { pricePerUnit: true },
+                                                    orderBy: { addedAt: "desc" },
+                                                    take: 1,
+                                                },
+                                            },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        }),
         prisma.sale.count({ where }),
     ]);
+
     const grossSales = sales.reduce((s, sale) => s + Number(sale.subtotal), 0);
     const discounts = sales.reduce((s, sale) => s + Number(sale.discount), 0);
     const netSales = grossSales - discounts;
-    return { grossSales, discounts, netSales, ordersCount: count };
+
+    let cost = 0;
+    for (const sale of sales) {
+        for (const item of sale.items) {
+            const itemCost = item.productSize.ingredients.reduce(
+                (sum, ing) => {
+                    const price = ing.rawMaterial.batches[0] ? Number(ing.rawMaterial.batches[0].pricePerUnit) : 0;
+                    return sum + Number(ing.quantity) * price;
+                },
+                0
+            );
+            cost += itemCost * Number(item.quantity);
+        }
+    }
+    cost = Math.round(cost * 100) / 100;
+
+    const profit = Math.round((netSales - cost) * 100) / 100;
+    const margin = netSales > 0 ? Math.round((profit / netSales) * 10000) / 100 : 0;
+
+    if (filters.groupBy && ["day", "week", "month"].includes(filters.groupBy)) {
+        const groupMap = {};
+        for (const sale of sales) {
+            const d = new Date(sale.createdAt);
+            let key;
+            if (filters.groupBy === "day") {
+                key = d.toISOString().slice(0, 10);
+            } else if (filters.groupBy === "week") {
+                const startOfYear = new Date(d.getFullYear(), 0, 1);
+                const weekNum = Math.ceil(((d - startOfYear) / 86400000 + startOfYear.getDay() + 1) / 7);
+                key = `${d.getFullYear()}-W${String(weekNum).padStart(2, "0")}`;
+            } else {
+                key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+            }
+            if (!groupMap[key]) groupMap[key] = { gross: 0, disc: 0, count: 0 };
+            groupMap[key].gross += Number(sale.subtotal);
+            groupMap[key].disc += Number(sale.discount);
+            groupMap[key].count += 1;
+        }
+        const grouped = Object.entries(groupMap).map(([period, v]) => ({
+            period,
+            grossSales: v.gross,
+            discounts: v.disc,
+            netSales: v.gross - v.disc,
+            ordersCount: v.count,
+        }));
+        return { grossSales, discounts, netSales, cost, profit, margin, ordersCount: count, grouped };
+    }
+
+    return { grossSales, discounts, netSales, cost, profit, margin, ordersCount: count };
 };
 
 module.exports = {

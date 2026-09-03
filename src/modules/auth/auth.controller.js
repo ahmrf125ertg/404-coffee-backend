@@ -36,7 +36,8 @@ const getMe = async (req, res, next) => {
 
 const refreshToken = async (req, res, next) => {
     try {
-        const result = await authService.refreshToken(req.body.refreshToken);
+        const token = req.body.refreshToken || req.headers.authorization?.split(" ")[1];
+        const result = await authService.refreshToken(token);
         res.status(200).json({ success: true, data: result });
     } catch (error) {
         next(error);
@@ -45,7 +46,9 @@ const refreshToken = async (req, res, next) => {
 
 const logoutUser = async (req, res, next) => {
     try {
-        await logAudit(req, "auth", "logout", `User ${req.user.userId} logged out`);
+        const { allDevices } = req.body || {};
+        await authService.logoutUser(req.user.userId, allDevices);
+        await logAudit(req, "auth", "logout", `User ${req.user.userId} logged out${allDevices ? " (all devices)" : ""}`);
         res.status(200).json({ success: true, data: { loggedOut: true } });
     } catch (error) {
         next(error);

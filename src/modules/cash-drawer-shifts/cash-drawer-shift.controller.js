@@ -158,8 +158,8 @@ const recordCashOut = async (req, res, next) => {
 const getShiftTransactions = async (req, res, next) => {
     try {
         const { page, pageSize } = parsePagination(req.query);
-        const { items, total } = await cashDrawerShiftService.getShiftTransactions(req.params.id, req.query);
-        res.status(200).json({ success: true, data: items, pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } });
+        const { items, total, totals } = await cashDrawerShiftService.getShiftTransactions(req.params.id, req.query);
+        res.status(200).json({ success: true, data: items, pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) }, totals });
     } catch (error) { next(error); }
 };
 

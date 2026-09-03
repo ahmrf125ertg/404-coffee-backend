@@ -227,15 +227,29 @@ const getSupplierTransactions = async (supplierId, filters = {}) => {
     const supplier = await prisma.supplier.findUnique({ where: { id } });
     if (!supplier) { const error = new Error("Supplier not found"); error.statusCode = 404; throw error; }
     const { skip, take } = parsePagination(filters);
-    const purchases = await prisma.purchase.findMany({ where: { supplierId: id }, orderBy: { invoiceDate: "desc" }, skip, take, select: { id: true, invoiceNo: true, invoiceDate: true, total: true, status: true } });
-    const returns = await prisma.return.findMany({ where: { supplierId: id }, orderBy: { returnDate: "desc" }, select: { id: true, returnNo: true, returnDate: true, totalValue: true, status: true } });
+    const purchaseWhere = { supplierId: id };
+    const returnWhere = { supplierId: id };
+    if (filters.from) {
+        purchaseWhere.invoiceDate = { ...purchaseWhere.invoiceDate, gte: new Date(filters.from) };
+        returnWhere.returnDate = { ...returnWhere.returnDate, gte: new Date(filters.from) };
+    }
+    if (filters.to) {
+        purchaseWhere.invoiceDate = { ...purchaseWhere.invoiceDate, lte: new Date(filters.to) };
+        returnWhere.returnDate = { ...returnWhere.returnDate, lte: new Date(filters.to) };
+    }
+    let purchases = await prisma.purchase.findMany({ where: purchaseWhere, orderBy: { invoiceDate: "desc" }, select: { id: true, invoiceNo: true, invoiceDate: true, total: true, status: true } });
+    let returns = await prisma.return.findMany({ where: returnWhere, orderBy: { returnDate: "desc" }, select: { id: true, returnNo: true, returnDate: true, totalValue: true, status: true } });
+    if (filters.type === "PURCHASE") { returns = []; }
+    if (filters.type === "RETURN") { purchases = []; }
     const allTx = [
         ...purchases.map(p => ({ ...p, type: "PURCHASE", date: p.invoiceDate, amount: Number(p.total) })),
         ...returns.map(r => ({ ...r, type: "RETURN", date: r.returnDate, amount: Number(r.totalValue) })),
     ].sort((a, b) => new Date(b.date) - new Date(a.date));
     const total = allTx.length;
     const pageTx = allTx.slice(skip, skip + take);
-    const summary = { totalPurchases: purchases.reduce((s, p) => s + Number(p.total), 0), totalReturns: returns.reduce((s, r) => s + Number(r.totalValue), 0) };
+    const totalOut = purchases.reduce((s, p) => s + Number(p.total), 0);
+    const totalIn = returns.reduce((s, r) => s + Number(r.totalValue), 0);
+    const summary = { totalIn, totalOut, balance: totalOut - totalIn };
     return { items: pageTx, total, summary };
 };
 

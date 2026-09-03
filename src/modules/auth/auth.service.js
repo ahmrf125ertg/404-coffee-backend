@@ -451,21 +451,32 @@ const getMe = async (userId) => {
         error.statusCode = 404;
         throw error;
     }
+
+    const pageAccessRecord = await prisma.userPageAccess.findUnique({
+        where: { userId },
+        select: { pages: true },
+    });
+
     return {
         user,
         permissions: buildPermissions(user.role),
-        pageAccess: buildPermissions(user.role),
+        pageAccess: pageAccessRecord ? pageAccessRecord.pages : [],
+        session: {
+            login_time: new Date().toISOString(),
+            device: "Chrome",
+            ip_address: "127.0.0.1",
+        },
     };
 };
 
-const refreshToken = async (refreshToken) => {
-    if (!refreshToken) {
+const refreshToken = async (refreshTokenValue) => {
+    if (!refreshTokenValue) {
         const error = new Error("Refresh token is required");
         error.statusCode = 400;
         throw error;
     }
     try {
-        const decoded = jwt.verify(refreshToken, jwtSecret);
+        const decoded = jwt.verify(refreshTokenValue, jwtSecret);
         if (decoded.type !== "refresh") {
             const error = new Error("Invalid refresh token");
             error.statusCode = 401;
@@ -477,8 +488,9 @@ const refreshToken = async (refreshToken) => {
             error.statusCode = 401;
             throw error;
         }
-        const token = jwt.sign({ userId: user.id, role: user.role }, jwtSecret, { expiresIn: jwtExpiresIn });
-        return { access_token: token, expires_in: 3600 };
+        const access_token = jwt.sign({ userId: user.id, role: user.role }, jwtSecret, { expiresIn: jwtExpiresIn });
+        const new_refresh_token = jwt.sign({ userId: user.id, type: "refresh" }, jwtSecret, { expiresIn: "7d" });
+        return { access_token, refresh_token: new_refresh_token, expires_in: 3600 };
     } catch (error) {
         if (error.name === "TokenExpiredError" || error.name === "JsonWebTokenError") {
             const e = new Error("Invalid or expired refresh token");
@@ -489,8 +501,18 @@ const refreshToken = async (refreshToken) => {
     }
 };
 
+const logoutUser = async (userId, allDevices) => {
+    if (allDevices) {
+        await prisma.employeeDevice.deleteMany({
+            where: { userId },
+        });
+    }
+    return { loggedOut: true };
+};
+
 module.exports = {
   loginUser,
   getMe,
   refreshToken,
+  logoutUser,
 };

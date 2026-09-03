@@ -136,8 +136,8 @@ const getDelegateOptions = async (req, res, next) => {
 const getDelegateOrders = async (req, res, next) => {
     try {
         const { page, pageSize } = parsePagination(req.query);
-        const { items, total } = await delegateService.getDelegateOrders(req.params.id, req.query);
-        res.status(200).json({ success: true, data: items, pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } });
+        const { items, total, summary } = await delegateService.getDelegateOrders(req.params.id, req.query);
+        res.status(200).json({ success: true, data: items, pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) }, summary });
     } catch (error) { next(error); }
 };
 

@@ -414,11 +414,29 @@ const getShiftTransactions = async (shiftId, filters = {}) => {
     const { skip, take } = parsePagination(filters);
     const where = { shiftId: id };
     if (filters.type) where.type = filters.type;
+    if (filters.source) where.description = { contains: filters.source, mode: "insensitive" };
+    if (filters.from || filters.to) {
+        where.createdAt = {};
+        if (filters.from) where.createdAt.gte = new Date(filters.from);
+        if (filters.to) where.createdAt.lte = new Date(filters.to);
+    }
     const [items, total] = await Promise.all([
         prisma.cashDrawerTransaction.findMany({ where, include: { recordedByUser: { select: { id: true, name: true } } }, orderBy: { createdAt: "desc" }, skip, take }),
         prisma.cashDrawerTransaction.count({ where }),
     ]);
-    return { items, total };
+    const totals = items.reduce(
+        (acc, t) => {
+            if (IN_TYPES.includes(t.type)) {
+                acc.cashIn += Number(t.amount);
+            } else if (OUT_TYPES.includes(t.type)) {
+                acc.cashOut += Number(t.amount);
+            }
+            return acc;
+        },
+        { cashIn: 0, cashOut: 0 }
+    );
+    totals.net = Math.round((totals.cashIn - totals.cashOut) * 100) / 100;
+    return { items, total, totals };
 };
 
 const getShiftReconciliation = async (shiftId) => {
@@ -426,12 +444,50 @@ const getShiftReconciliation = async (shiftId) => {
     if (!Number.isInteger(id) || id <= 0) { const error = new Error("Invalid shift ID"); error.statusCode = 400; throw error; }
     const shift = await prisma.cashDrawerShift.findUnique({ where: { id }, include: { transactions: true } });
     if (!shift) { const error = new Error("Shift not found"); error.statusCode = 404; throw error; }
-    const salesTotal = shift.transactions.filter(t => t.type === "SALES").reduce((s, t) => s + Number(t.amount), 0);
+
+    const salesTransactions = shift.transactions.filter(t => t.type === "SALES");
+    const salesTotal = salesTransactions.reduce((s, t) => s + Number(t.amount), 0);
     const manualIn = shift.transactions.filter(t => t.type === "COLLECTION").reduce((s, t) => s + Number(t.amount), 0);
     const manualOut = shift.transactions.filter(t => ["EXPENSE", "SALARY", "MAINTENANCE", "INCENTIVE"].includes(t.type)).reduce((s, t) => s + Number(t.amount), 0);
-    const expected = Number(shift.openingBalance) + salesTotal + manualIn - manualOut;
+
+    const shiftStart = shift.openedAt;
+    const shiftEnd = shift.closedAt || new Date();
+
+    const cancelledSales = await prisma.sale.findMany({
+        where: {
+            status: "CANCELLED",
+            createdAt: { gte: shiftStart, lte: shiftEnd },
+        },
+        select: { subtotal: true, discount: true, total: true },
+    });
+    const refunds = cancelledSales.reduce((s, sale) => s + Number(sale.total), 0);
+
+    const completedSalesInRange = await prisma.sale.findMany({
+        where: {
+            status: "COMPLETED",
+            paymentMethod: "CASH",
+            createdAt: { gte: shiftStart, lte: shiftEnd },
+        },
+        select: { id: true, total: true },
+    });
+    const saleIds = completedSalesInRange.map(s => s.id);
+    const matchedSaleIds = new Set(
+        salesTransactions
+            .map(t => t.description)
+            .filter(Boolean)
+            .map(d => {
+                const match = d.match(/sale[:# ]*(\d+)/i);
+                return match ? Number(match[1]) : null;
+            })
+            .filter(Boolean)
+    );
+    const unmatchedOrders = completedSalesInRange.filter(s => !matchedSaleIds.has(s.id)).length;
+
+    const expected = Math.round((Number(shift.openingBalance) + salesTotal + manualIn - manualOut - refunds) * 100) / 100;
     const actual = Number(shift.actualBalance || 0);
-    return { opening: Number(shift.openingBalance), cashSales: salesTotal, manualIn, manualOut, expected, actual, difference: actual - expected };
+    const difference = Math.round((actual - expected) * 100) / 100;
+
+    return { opening: Number(shift.openingBalance), cashSales: salesTotal, manualIn, manualOut, refunds, expected, actual, difference, unmatchedOrders };
 };
 
 module.exports = {

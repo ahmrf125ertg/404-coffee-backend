@@ -408,9 +408,13 @@ const mergeCustomers = async (primaryId, duplicateId) => {
     const duplicate = await prisma.customer.findUnique({ where: { id: did } });
     if (!duplicate) { const error = new Error("Duplicate customer not found"); error.statusCode = 404; throw error; }
 
-    const movedOrders = await prisma.order.updateMany({ where: { customerId: did }, data: { customerId: pid } });
-    await prisma.customer.delete({ where: { id: did } });
-    return { customer: primary, movedOrders: movedOrders.count, deletedDuplicate: did };
+    const result = await prisma.$transaction(async (tx) => {
+        const movedOrders = await tx.order.updateMany({ where: { customerId: did }, data: { customerId: pid } });
+        await tx.customer.delete({ where: { id: did } });
+        return { customer: primary, movedOrders: movedOrders.count, deletedDuplicate: did };
+    });
+
+    return result;
 };
 
 module.exports = {
