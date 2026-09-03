@@ -1,11 +1,21 @@
 const prisma = require("../../lib/prisma");
 
-const getDashboard = async () => {
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
+const getDashboard = async (filters = {}) => {
+    const { date, shiftId } = filters;
 
-    const todayEnd = new Date(todayStart);
-    todayEnd.setDate(todayEnd.getDate() + 1);
+    // Date filtering
+    let dateStart, dateEnd;
+    if (date) {
+        dateStart = new Date(date);
+        dateStart.setHours(0, 0, 0, 0);
+        dateEnd = new Date(dateStart);
+        dateEnd.setDate(dateEnd.getDate() + 1);
+    } else {
+        dateStart = new Date();
+        dateStart.setHours(0, 0, 0, 0);
+        dateEnd = new Date(dateStart);
+        dateEnd.setDate(dateEnd.getDate() + 1);
+    }
 
     const [
         todaySales,
@@ -24,7 +34,7 @@ const getDashboard = async () => {
     ] = await Promise.all([
         prisma.sale.findMany({
             where: {
-                createdAt: { gte: todayStart, lt: todayEnd },
+                createdAt: { gte: dateStart, lt: dateEnd },
                 status: "COMPLETED",
             },
             select: { total: true },
@@ -36,7 +46,7 @@ const getDashboard = async () => {
         }),
         prisma.order.findMany({
             where: {
-                createdAt: { gte: todayStart, lt: todayEnd },
+                createdAt: { gte: dateStart, lt: dateEnd },
             },
             select: { total: true },
         }),
@@ -47,26 +57,28 @@ const getDashboard = async () => {
         prisma.order.count({
             where: { status: "PENDING" },
         }),
-        prisma.cashDrawerShift.findFirst({
-            where: { status: "OPEN" },
-            include: {
-                openedByUser: {
-                    select: { id: true, name: true },
-                },
-                transactions: {
-                    select: { type: true, amount: true },
-                },
-            },
-            orderBy: { openedAt: "desc" },
-        }),
+        shiftId
+            ? prisma.cashDrawerShift.findUnique({
+                  where: { id: Number(shiftId) },
+                  include: {
+                      openedByUser: { select: { id: true, name: true } },
+                      transactions: { select: { type: true, amount: true } },
+                  },
+              })
+            : prisma.cashDrawerShift.findFirst({
+                  where: { status: "OPEN" },
+                  include: {
+                      openedByUser: { select: { id: true, name: true } },
+                      transactions: { select: { type: true, amount: true } },
+                  },
+                  orderBy: { openedAt: "desc" },
+              }),
         prisma.product.count(),
         prisma.customer.count(),
         prisma.supplier.count(),
         prisma.delegate.count(),
         prisma.rawMaterial.findMany({
-            include: {
-                batches: true,
-            },
+            include: { batches: true },
         }),
         prisma.sale.findMany({
             where: { status: "COMPLETED" },

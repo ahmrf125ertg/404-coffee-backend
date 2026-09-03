@@ -553,6 +553,7 @@ model Delegate {
   phone    String
   image    String?
   status   DelegateStatus @default(AVAILABLE)
+  isActive Boolean        @default(true)
 
   orders Order[]
 
@@ -561,6 +562,7 @@ model Delegate {
 
   @@index([name])
   @@index([status])
+  @@index([isActive])
   @@map("delegates")
 }
 

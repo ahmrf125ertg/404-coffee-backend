@@ -63,6 +63,7 @@ const createDelegate = async ({
     phone,
     image,
     status,
+    isActive,
 }) => {
 
     if (!name || !whatsapp || !phone) {
@@ -95,6 +96,7 @@ const createDelegate = async ({
             phone,
             image: image || null,
             status: status || "AVAILABLE",
+            isActive: isActive !== false,
         },
     });
 
@@ -122,6 +124,7 @@ const updateDelegate = async (id, data) => {
         phone,
         image,
         status,
+        isActive,
     } = data;
 
     if (phone !== undefined || whatsapp !== undefined) {
@@ -164,6 +167,7 @@ const updateDelegate = async (id, data) => {
                 image: image || null,
             }),
             ...(status !== undefined && { status }),
+            ...(isActive !== undefined && { isActive }),
         },
     });
 
