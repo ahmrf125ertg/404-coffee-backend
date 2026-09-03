@@ -210,7 +210,7 @@ const getTableSummaries = async (req, res, next) => {
 
 const updateOrderStatus = async (req, res, next) => {
     try {
-        const result = await orderService.updateOrderStatus(req.params.id, req.body);
+        const result = await orderService.updateOrderStatus(req.params.id, req.body, req.user?.userId);
         emitOrderUpdated(result.order);
         await logAudit(req, "orders", "edit_order", `Order ${result.order.orderNumber} status changed to ${result.order.status}`);
         return res.status(200).json({
@@ -310,7 +310,7 @@ const cancelOrder = async (req, res, next) => {
             data: {
                 order: result.order,
                 status: "CANCELLED",
-                releasedReservations: result.inventoryEffect || [],
+                releasedReservations: result.restoredBatches || [],
                 restoredBatches: result.restoredBatches || [],
             },
         });
@@ -428,7 +428,7 @@ const addTableItems = async (req, res, next) => {
 
 const checkoutTable = async (req, res, next) => {
     try {
-        const result = await orderService.checkoutTable(req.params.tableNumber, req.body);
+        const result = await orderService.checkoutTable(req.params.tableNumber, req.body, req.user?.userId);
         emitOrderUpdated(result.order);
         await logAudit(req, "orders", "edit_order", `Table ${req.params.tableNumber} checked out`);
         return res.status(200).json({ success: true, message: "Table checked out", data: result });
@@ -471,7 +471,7 @@ const getActiveTableOrder = async (req, res, next) => {
 
 const completeDelivery = async (req, res, next) => {
     try {
-        const result = await orderService.completeDelivery(req.params.id, req.body);
+        const result = await orderService.completeDelivery(req.params.id, req.body, req.user?.userId);
         emitOrderUpdated(result.order);
         await logAudit(req, "orders", "edit_order", `Order ${result.order.orderNumber} delivery completed`);
         return res.status(200).json({
@@ -481,6 +481,7 @@ const completeDelivery = async (req, res, next) => {
                 order: result.order,
                 deliveredAt: result.deliveredAt,
                 sale: result.sale,
+                drawerTransaction: result.drawerTransaction,
             },
         });
     } catch (error) { next(error); }

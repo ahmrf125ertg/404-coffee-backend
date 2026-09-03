@@ -873,7 +873,7 @@ const getTableSummaries = async () => {
 // Update order status (with inventoryEffect/financialEffect)
 // ============================================================
 
-const updateOrderStatus = async (id, data) => {
+const updateOrderStatus = async (id, data, userId) => {
     const orderId = Number(id);
     const { status, reason, delegateId } = typeof data === "string" ? { status: data } : data;
 
@@ -913,34 +913,16 @@ const updateOrderStatus = async (id, data) => {
             inventoryEffect = await deductInventoryForOrder(tx, orderId);
         }
 
-        // COMPLETED: create sale + record revenue
+        // COMPLETED: create sale + drawer transaction
         if (status === "COMPLETED" && existingOrder.status !== "COMPLETED") {
-            const sale = await tx.sale.create({
-                data: {
-                    customerId: existingOrder.customerId,
-                    subtotal: existingOrder.subtotal,
-                    discount: existingOrder.discount,
-                    total: existingOrder.total,
-                    paymentMethod: existingOrder.paymentMethod,
-                    status: "COMPLETED",
-                },
-            });
-
-            const orderItems = await tx.orderItem.findMany({ where: { orderId } });
-            for (const item of orderItems) {
-                await tx.saleItem.create({
-                    data: {
-                        saleId: sale.id,
-                        productId: item.productId,
-                        productSizeId: item.productSizeId,
-                        quantity: item.quantity,
-                        unitPrice: item.unitPrice,
-                        totalPrice: item.totalPrice,
-                    },
-                });
-            }
-
-            financialEffect = { saleId: sale.id, total: Number(order.total), paymentMethod: order.paymentMethod };
+            const { sale, drawerTransaction } = await createOrderCompletionSale(tx, order, userId || order.customerId || 1);
+            financialEffect = {
+                saleId: sale.id,
+                total: Number(order.total),
+                paymentMethod: order.paymentMethod,
+                drawerTransactionId: drawerTransaction ? drawerTransaction.id : null,
+                drawerTransaction,
+            };
         }
 
         // CANCELLED: restore inventory
@@ -1173,6 +1155,60 @@ const calculateOrderCost = async (orderId) => {
 };
 
 // ============================================================
+// Shared: Create sale + sale items for order completion
+// Reused by: updateOrderStatus (COMPLETED), checkoutTable, completeDelivery
+// ============================================================
+
+const createOrderCompletionSale = async (tx, order, userId) => {
+    const sale = await tx.sale.create({
+        data: {
+            customerId: order.customerId,
+            subtotal: order.subtotal,
+            discount: order.discount,
+            total: order.total,
+            paymentMethod: order.paymentMethod,
+            status: "COMPLETED",
+        },
+    });
+
+    const orderItems = await tx.orderItem.findMany({ where: { orderId: order.id } });
+    for (const item of orderItems) {
+        await tx.saleItem.create({
+            data: {
+                saleId: sale.id,
+                productId: item.productId,
+                productSizeId: item.productSizeId,
+                quantity: item.quantity,
+                unitPrice: item.unitPrice,
+                totalPrice: item.totalPrice,
+            },
+        });
+    }
+
+    let drawerTransaction = null;
+    if (order.paymentMethod === "CASH") {
+        const openShift = await tx.cashDrawerShift.findFirst({
+            where: { status: "OPEN" },
+            orderBy: { openedAt: "desc" },
+        });
+
+        if (openShift) {
+            drawerTransaction = await tx.cashDrawerTransaction.create({
+                data: {
+                    shiftId: openShift.id,
+                    type: "SALES",
+                    amount: order.total,
+                    description: `Order ${order.orderNumber} sale`,
+                    recordedByUserId: userId,
+                },
+            });
+        }
+    }
+
+    return { sale, drawerTransaction };
+};
+
+// ============================================================
 // Restore inventory for cancelled order
 // ============================================================
 
@@ -1396,7 +1432,7 @@ const addTableItems = async (tableNumber, data) => {
 // Table checkout (with invoice + sale)
 // ============================================================
 
-const checkoutTable = async (tableNumber, data) => {
+const checkoutTable = async (tableNumber, data, userId) => {
     if (!tableNumber) throw httpError("Table number is required");
     const { paymentMethod, discount, actualPaid } = data;
     const activeOrders = await prisma.order.findMany({
@@ -1423,7 +1459,7 @@ const checkoutTable = async (tableNumber, data) => {
             updatedOrders.push(updated);
         }
 
-        // Create sale for the checkout
+        // Create a single sale covering all table orders
         const firstOrder = updatedOrders[0];
         const sale = await tx.sale.create({
             data: {
@@ -1436,7 +1472,6 @@ const checkoutTable = async (tableNumber, data) => {
             },
         });
 
-        // Create sale items for all orders
         for (const o of updatedOrders) {
             const orderItems = await tx.orderItem.findMany({ where: { orderId: o.id } });
             for (const item of orderItems) {
@@ -1448,6 +1483,27 @@ const checkoutTable = async (tableNumber, data) => {
                         quantity: item.quantity,
                         unitPrice: item.unitPrice,
                         totalPrice: item.totalPrice,
+                    },
+                });
+            }
+        }
+
+        // Create drawer transaction if CASH
+        let drawerTransaction = null;
+        const effectivePayment = paymentMethod || firstOrder.paymentMethod;
+        if (effectivePayment === "CASH") {
+            const openShift = await tx.cashDrawerShift.findFirst({
+                where: { status: "OPEN" },
+                orderBy: { openedAt: "desc" },
+            });
+            if (openShift) {
+                drawerTransaction = await tx.cashDrawerTransaction.create({
+                    data: {
+                        shiftId: openShift.id,
+                        type: "SALES",
+                        amount: totalPaid - (discount || 0),
+                        description: `Table ${tableNumber} checkout`,
+                        recordedByUserId: userId || firstOrder.customerId || 1,
                     },
                 });
             }
@@ -1477,7 +1533,7 @@ const checkoutTable = async (tableNumber, data) => {
             subtotal: updatedOrders.reduce((s, o) => s + Number(o.subtotal), 0),
             discount: discount || 0,
             total: totalPaid - (discount || 0),
-            paymentMethod: paymentMethod || firstOrder.paymentMethod,
+            paymentMethod: effectivePayment,
         };
 
         return {
@@ -1485,6 +1541,7 @@ const checkoutTable = async (tableNumber, data) => {
             orders: updatedOrders,
             invoice,
             sale,
+            drawerTransaction,
             totalPaid,
             tableStatus: "EMPTY",
         };
@@ -1512,7 +1569,7 @@ const getTableHistory = async (tableNumber, filters = {}) => {
 // Complete delivery (delegate confirms delivery)
 // ============================================================
 
-const completeDelivery = async (orderId, data = {}) => {
+const completeDelivery = async (orderId, data = {}, userId) => {
     const orderIdNum = Number(orderId);
     const { collectedAmount, notes } = data;
 
@@ -1539,37 +1596,13 @@ const completeDelivery = async (orderId, data = {}) => {
             include: getOrderInclude,
         });
 
-        // Create sale
-        const sale = await tx.sale.create({
-            data: {
-                customerId: existing.customerId,
-                subtotal: existing.subtotal,
-                discount: existing.discount,
-                total: existing.total,
-                paymentMethod: existing.paymentMethod,
-                status: "COMPLETED",
-            },
-        });
-
-        // Create sale items
-        const orderItems = await tx.orderItem.findMany({ where: { orderId: orderIdNum } });
-        for (const item of orderItems) {
-            await tx.saleItem.create({
-                data: {
-                    saleId: sale.id,
-                    productId: item.productId,
-                    productSizeId: item.productSizeId,
-                    quantity: item.quantity,
-                    unitPrice: item.unitPrice,
-                    totalPrice: item.totalPrice,
-                },
-            });
-        }
+        // Create sale + drawer transaction (shared helper)
+        const { sale, drawerTransaction } = await createOrderCompletionSale(tx, order, userId || existing.customerId || 1);
 
         // Deduct inventory
         await deductInventoryForOrder(tx, orderIdNum);
 
-        return { order, sale, deliveredAt: order.deliveredAt };
+        return { order, sale, drawerTransaction, deliveredAt: order.deliveredAt };
     });
 
     return result;
