@@ -345,7 +345,7 @@ const buildRole = (role) => ({
 // Login
 // ============================================================
 
-const loginUser = async ({ name, username, password }) => {
+const loginUser = async ({ name, username, password, deviceFingerprint }) => {
   const resolvedName = name || username;
   if (!resolvedName || !password) {
     const error = new Error("Name and password are required");
@@ -375,6 +375,23 @@ const loginUser = async ({ name, username, password }) => {
     const error = new Error("Invalid credentials");
     error.statusCode = 401;
     throw error;
+  }
+
+  // Device fingerprint check
+  let deviceReviewRequired = false;
+  if (deviceFingerprint) {
+    const device = await prisma.employeeDevice.findUnique({
+      where: { deviceFingerprint },
+    });
+    if (!device) {
+      deviceReviewRequired = true;
+    } else if (device.status === "PENDING") {
+      deviceReviewRequired = true;
+    } else if (device.status === "REVOKED" || device.status === "REJECTED") {
+      const error = new Error("This device has been revoked or rejected");
+      error.statusCode = 403;
+      throw error;
+    }
   }
 
   const token = jwt.sign(
@@ -420,6 +437,7 @@ const loginUser = async ({ name, username, password }) => {
       device: "Chrome",
       ip_address: "127.0.0.1",
     },
+    deviceReviewRequired,
   };
 };
 

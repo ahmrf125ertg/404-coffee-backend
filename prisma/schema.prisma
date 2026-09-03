@@ -17,6 +17,10 @@ model User {
   role         Role       @default(MANAGER)
   status       UserStatus @default(ACTIVE)
 
+  jobTitle      String?
+  workStartTime String?
+  workEndTime   String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -26,10 +30,13 @@ model User {
 
   auditLogs       AuditLog[]
   updatedSettings Setting[]  @relation("UpdatedSettings")
+  pageAccess      UserPageAccess?
 
   attendance  Attendance[]
-  devices     EmployeeDevice[]
+  devices     EmployeeDevice[] @relation("DeviceOwner")
   orderEvents OrderEvent[]
+
+  approvedDevices EmployeeDevice[] @relation("ApprovedByUser")
 
   @@map("users")
 }
@@ -689,13 +696,14 @@ model ProductCategory {
 }
 
 model Attendance {
-  id          Int       @id @default(autoincrement())
-  userId      Int
-  checkInAt   DateTime
-  checkOutAt  DateTime?
-  status      String    @default("ON_TIME")
-  lateMinutes Int       @default(0)
-  notes       String?
+  id               Int       @id @default(autoincrement())
+  userId           Int
+  checkInAt        DateTime
+  checkOutAt       DateTime?
+  status           String    @default("ON_TIME")
+  lateMinutes      Int       @default(0)
+  notes            String?
+  deviceFingerprint String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -714,8 +722,12 @@ model EmployeeDevice {
   deviceFingerprint String @unique
   deviceInfo        Json?
   status            String @default("PENDING")
+  approvedByUserId  Int?
+  approvedAt        DateTime?
+  rejectedAt        DateTime?
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User  @relation("DeviceOwner", fields: [userId], references: [id], onDelete: Cascade)
+  approvedBy   User? @relation("ApprovedByUser", fields: [approvedByUserId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -743,4 +755,21 @@ model OrderEvent {
   @@index([type])
   @@index([createdAt])
   @@map("order_events")
+}
+
+// ============================================================
+// User Page Access
+// ============================================================
+
+model UserPageAccess {
+  id     Int  @id @default(autoincrement())
+  userId Int  @unique
+  pages  Json
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("user_page_access")
 }

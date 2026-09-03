@@ -16,6 +16,8 @@ const errorHandler = require("./middlewares/error.middleware");
 
 const authRoutes = require("./modules/auth/auth.routes");
 const auditLogRoutes = require("./modules/audit-logs/audit-log.routes");
+const deviceRoutes = require("./modules/devices/device.routes");
+const attendanceRoutes = require("./modules/attendance/attendance.routes");
 
 const cashDrawerShiftRoutes = require("./modules/cash-drawer-shifts/cash-drawer-shift.routes");
 const chatRoutes = require("./modules/chat/chat.routes");
@@ -112,6 +114,8 @@ app.get("/api/docs.json", (req, res) => {
 // Routes
 // ============================================================
 app.use("/api/auth", authRoutes);
+app.use("/api/auth/devices", deviceRoutes);
+app.use("/api/attendance", attendanceRoutes);
 app.use("/api/audit-logs", auditLogRoutes);
 
 app.use("/api/cash-drawer-shifts", cashDrawerShiftRoutes);

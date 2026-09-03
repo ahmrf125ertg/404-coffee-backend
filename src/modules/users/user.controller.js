@@ -22,6 +22,9 @@ const USER_SELECT = {
   position: true,
   role: true,
   status: true,
+  jobTitle: true,
+  workStartTime: true,
+  workEndTime: true,
   createdAt: true,
   updatedAt: true,
 };
@@ -71,7 +74,7 @@ const getUsers = async (req, res, next) => {
 // =========================================================
 const createUser = async (req, res, next) => {
   try {
-    const { name, password, position, role = "CASHIER" } = req.body;
+    const { name, password, position, role = "CASHIER", jobTitle, workStartTime, workEndTime } = req.body;
 
     if (!name || !password || !position) {
       const error = new Error("Name, password and position are required");
@@ -102,7 +105,15 @@ const createUser = async (req, res, next) => {
     const passwordHash = await bcrypt.hash(password, 10);
 
     const user = await prisma.user.create({
-      data: { name, passwordHash, position, role },
+      data: {
+        name,
+        passwordHash,
+        position,
+        role,
+        ...(jobTitle !== undefined && { jobTitle }),
+        ...(workStartTime !== undefined && { workStartTime }),
+        ...(workEndTime !== undefined && { workEndTime }),
+      },
       select: USER_SELECT,
     });
 
@@ -124,7 +135,7 @@ const createUser = async (req, res, next) => {
 const updateUser = async (req, res, next) => {
   try {
     const userId = Number(req.params.id);
-    const { name, password, position, role } = req.body;
+    const { name, password, position, role, jobTitle, workStartTime, workEndTime } = req.body;
 
     if (!Number.isInteger(userId) || userId <= 0) {
       const error = new Error("Invalid user ID");
@@ -198,6 +209,10 @@ const updateUser = async (req, res, next) => {
 
       updateData.role = role;
     }
+
+    if (jobTitle !== undefined) updateData.jobTitle = jobTitle || null;
+    if (workStartTime !== undefined) updateData.workStartTime = workStartTime || null;
+    if (workEndTime !== undefined) updateData.workEndTime = workEndTime || null;
 
     const user = await prisma.user.update({
       where: { id: userId },
@@ -384,7 +399,44 @@ const getUserById = async (req, res, next) => {
     if (!Number.isInteger(userId) || userId <= 0) { const error = new Error("Invalid user ID"); error.statusCode = 400; throw error; }
     const user = await prisma.user.findUnique({ where: { id: userId }, select: USER_SELECT });
     if (!user) { const error = new Error("User not found"); error.statusCode = 404; throw error; }
-    res.status(200).json({ success: true, data: user });
+
+    // Fetch related data
+    const [devices, attendanceRecords, pageAccessRecord] = await Promise.all([
+      prisma.employeeDevice.findMany({ where: { userId }, orderBy: { createdAt: "desc" } }),
+      prisma.attendance.findMany({ where: { userId }, select: { status: true, checkInAt: true, checkOutAt: true } }),
+      prisma.userPageAccess.findUnique({ where: { userId } }),
+    ]);
+
+    // Compute attendance summary
+    const totalDays = attendanceRecords.length;
+    const onTimeCount = attendanceRecords.filter((r) => r.status === "ON_TIME").length;
+    const lateCount = attendanceRecords.filter((r) => r.status === "LATE").length;
+    const totalWorkedMinutes = attendanceRecords.reduce((sum, r) => {
+      if (r.checkOutAt) {
+        return sum + Math.round((new Date(r.checkOutAt).getTime() - new Date(r.checkInAt).getTime()) / (1000 * 60));
+      }
+      return sum;
+    }, 0);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        ...user,
+        workSchedule: {
+          jobTitle: user.jobTitle || null,
+          workStartTime: user.workStartTime || null,
+          workEndTime: user.workEndTime || null,
+        },
+        devices,
+        pageAccess: pageAccessRecord ? pageAccessRecord.pages : null,
+        attendanceSummary: {
+          totalDays,
+          onTimeCount,
+          lateCount,
+          totalWorkedHours: Math.round(totalWorkedMinutes / 60 * 10) / 10,
+        },
+      },
+    });
   } catch (error) { next(error); }
 };
 

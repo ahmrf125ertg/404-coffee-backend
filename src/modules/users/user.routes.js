@@ -14,6 +14,9 @@ const {
   updateUserPageAccess,
 } = require("./user.controller");
 
+const { getUserDevices, approveOrRejectDevice, revokeDevice } = require("../devices/device.controller");
+const { getUserAttendance } = require("../attendance/attendance.controller");
+
 const router = express.Router();
 
 // Get all users
@@ -78,6 +81,36 @@ router.put(
   authMiddleware,
   requirePermission("users", "edit_user"),
   updateUserPageAccess
+);
+
+// Device management
+router.get(
+  "/:id/devices",
+  authMiddleware,
+  requirePermission("users", "view_users"),
+  getUserDevices
+);
+
+router.patch(
+  "/:id/devices/:deviceId",
+  authMiddleware,
+  requirePermission("users", "edit_user"),
+  approveOrRejectDevice
+);
+
+router.delete(
+  "/:id/devices/:deviceId",
+  authMiddleware,
+  requirePermission("users", "edit_user"),
+  revokeDevice
+);
+
+// Attendance
+router.get(
+  "/:id/attendance",
+  authMiddleware,
+  requirePermission("users", "view_users"),
+  getUserAttendance
 );
 
 module.exports = router;
