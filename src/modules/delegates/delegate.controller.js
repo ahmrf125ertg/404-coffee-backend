@@ -82,17 +82,21 @@ const updateDelegate = async (req, res, next) => {
 };
 
 
-// Update delegate status
+// Update delegate status (supports both isActive and legacy AVAILABLE/UNAVAILABLE)
 const updateDelegateStatus = async (req, res, next) => {
     try {
-        const delegate = await delegateService.updateDelegateStatus(
+        const { delegate, inputFormat } = await delegateService.updateDelegateStatus(
             req.params.id,
-            req.body.status
+            req.body
         );
 
+        const formatNote = inputFormat === "isActive"
+            ? "via isActive field"
+            : "via legacy status field (deprecated)";
 
-                // Record in audit log
-                await logAudit(req, "delegates", "change_delegate_status", "Delegate status updated successfully");        res.status(200).json({
+        await logAudit(req, "delegates", "change_delegate_status", `Delegate ${delegate.name} status updated ${formatNote}: isActive=${delegate.isActive}, status=${delegate.status}`);
+
+        res.status(200).json({
             success: true,
             message: "Delegate status updated successfully",
             data: delegate,

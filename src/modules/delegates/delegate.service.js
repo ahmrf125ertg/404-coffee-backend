@@ -176,7 +176,9 @@ const updateDelegate = async (id, data) => {
 
 
 // Update delegate status
-const updateDelegateStatus = async (id, status) => {
+// Accepts EITHER { isActive: boolean } (new) OR { status: "AVAILABLE"|"UNAVAILABLE" } (old)
+// Always syncs both fields bidirectionally for backward compatibility
+const updateDelegateStatus = async (id, data) => {
     const existingDelegate = await prisma.delegate.findUnique({
         where: {
             id: Number(id),
@@ -189,8 +191,20 @@ const updateDelegateStatus = async (id, status) => {
         throw error;
     }
 
-    if (!["AVAILABLE", "UNAVAILABLE"].includes(status)) {
-        const error = new Error("Invalid delegate status");
+    const { status, isActive } = data;
+    let newIsActive;
+    let inputFormat;
+
+    if (isActive !== undefined && typeof isActive === "boolean") {
+        // NEW format: derive status from isActive
+        newIsActive = isActive;
+        inputFormat = "isActive";
+    } else if (status !== undefined && ["AVAILABLE", "UNAVAILABLE"].includes(status)) {
+        // OLD format: derive isActive from status
+        newIsActive = status === "AVAILABLE";
+        inputFormat = "status";
+    } else {
+        const error = new Error("Invalid status data. Provide isActive (boolean) or status (AVAILABLE/UNAVAILABLE)");
         error.statusCode = 400;
         throw error;
     }
@@ -200,11 +214,12 @@ const updateDelegateStatus = async (id, status) => {
             id: Number(id),
         },
         data: {
-            status,
+            isActive: newIsActive,
+            status: newIsActive ? "AVAILABLE" : "UNAVAILABLE",
         },
     });
 
-    return updatedDelegate;
+    return { delegate: updatedDelegate, inputFormat };
 };
 
 

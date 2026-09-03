@@ -17,23 +17,34 @@ const validateDelegate = (req, res, next) => {
 
 
 const validateDelegateStatus = (req, res, next) => {
-    const { status } = req.body;
+    const { status, isActive } = req.body;
 
-    if (!status) {
-        return res.status(400).json({
-            success: false,
-            message: "Status is required",
-        });
+    // Accept NEW format: { isActive: boolean }
+    if (isActive !== undefined) {
+        if (typeof isActive !== "boolean") {
+            return res.status(400).json({
+                success: false,
+                message: "isActive must be a boolean",
+            });
+        }
+        return next();
     }
 
-    if (!["AVAILABLE", "UNAVAILABLE"].includes(status)) {
-        return res.status(400).json({
-            success: false,
-            message: "Invalid delegate status",
-        });
+    // Accept OLD format: { status: "AVAILABLE" | "UNAVAILABLE" }
+    if (status !== undefined) {
+        if (!["AVAILABLE", "UNAVAILABLE"].includes(status)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid delegate status. Must be AVAILABLE or UNAVAILABLE",
+            });
+        }
+        return next();
     }
 
-    next();
+    return res.status(400).json({
+        success: false,
+        message: "Either isActive (boolean) or status (AVAILABLE/UNAVAILABLE) is required",
+    });
 };
 
 
