@@ -8,18 +8,31 @@ const httpError = (message, statusCode = 400) => {
 };
 
 // Compute ON_TIME/LATE based on user's workStartTime
+// Parses time directly from ISO string to avoid timezone conversion issues
 const computeAttendanceStatus = (checkInAt, workStartTime) => {
     if (!workStartTime) return { status: "ON_TIME", lateMinutes: 0 };
 
-    const checkIn = new Date(checkInAt);
     const [hours, minutes] = workStartTime.split(":").map(Number);
-    const workStart = new Date(checkIn);
-    workStart.setHours(hours, minutes, 0, 0);
+    const workStartMinutes = hours * 60 + minutes;
 
-    if (checkIn <= workStart) return { status: "ON_TIME", lateMinutes: 0 };
+    // Parse hour/minute directly from the ISO string to avoid Date timezone conversion
+    let checkInHour, checkInMinute;
+    if (typeof checkInAt === "string" && checkInAt.includes("T")) {
+        const timePart = checkInAt.split("T")[1]; // "08:50:00.000Z"
+        const [h, m] = timePart.split(":").map(Number);
+        checkInHour = h;
+        checkInMinute = m;
+    } else {
+        const d = new Date(checkInAt);
+        checkInHour = d.getHours();
+        checkInMinute = d.getMinutes();
+    }
 
-    const lateMs = checkIn.getTime() - workStart.getTime();
-    const lateMinutes = Math.ceil(lateMs / (1000 * 60));
+    const checkInMinutes = checkInHour * 60 + checkInMinute;
+
+    if (checkInMinutes <= workStartMinutes) return { status: "ON_TIME", lateMinutes: 0 };
+
+    const lateMinutes = checkInMinutes - workStartMinutes;
     return { status: "LATE", lateMinutes };
 };
 
@@ -46,7 +59,7 @@ const checkIn = async (userId, { deviceFingerprint, at }) => {
 
     if (existingCheckIn) throw httpError("Already checked in today. Check out first.");
 
-    const { status, lateMinutes } = computeAttendanceStatus(checkInAt, user.workStartTime);
+    const { status, lateMinutes } = computeAttendanceStatus(at || checkInAt, user.workStartTime);
 
     const attendance = await prisma.attendance.create({
         data: {
