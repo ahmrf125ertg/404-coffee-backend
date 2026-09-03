@@ -1,4 +1,5 @@
 const prisma = require("../../lib/prisma");
+const warningService = require("../warnings/warning.service");
 
 const getDashboard = async (filters = {}) => {
     const { date, shiftId } = filters;
@@ -126,27 +127,18 @@ const getDashboard = async (filters = {}) => {
 
     const lowStock = stock.filter((item) => item.currentStock <= item.minStockAlert);
 
-    const expiringSoon = rawMaterials
-        .flatMap((material) =>
-            material.batches
-                .filter((batch) => batch.expiryDate)
-                .map((batch) => ({
-                    id: material.id,
-                    name: material.name,
-                    batchId: batch.id,
-                    quantity: toNumber(batch.quantity),
-                    unit: material.unit,
-                    expiryDate: batch.expiryDate,
-                }))
-        )
-        .filter((batch) => {
-            const daysLeft = Math.ceil(
-                (new Date(batch.expiryDate) - new Date()) / (1000 * 60 * 60 * 24)
-            );
-
-            return daysLeft >= 0 && daysLeft <= 30;
-        })
-        .sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
+    // Reuse the warnings module for expiring soon (consistent with GET /api/warnings)
+    const { expiring: expiringWarnings } = await warningService.getWarnings();
+    const expiringSoon = expiringWarnings.map((w) => ({
+        id: w.rawMaterialId,
+        name: w.name,
+        batchId: w.batchId,
+        quantity: w.quantity,
+        unit: w.unit,
+        expiryDate: w.expiryDate,
+        daysLeft: w.daysLeft,
+        severity: w.severity,
+    }));
 
     let shiftSummary = null;
 
