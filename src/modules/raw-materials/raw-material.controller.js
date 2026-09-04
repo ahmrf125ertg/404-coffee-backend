@@ -134,6 +134,16 @@ const getMaterialBatches = async (
         next(error);
     }
 };
+
+const getRawMaterialsOptions = async (req, res, next) => {
+    try {
+        const options = await rawMaterialService.getRawMaterialsOptions();
+        res.status(200).json({ success: true, data: options });
+    } catch (error) {
+        next(error);
+    }
+};
+
 module.exports = {
     getRawMaterials,
     createRawMaterial,
@@ -141,5 +151,5 @@ module.exports = {
     deleteRawMaterial,
     addBatch,
     getMaterialBatches,
-
+    getRawMaterialsOptions,
 };

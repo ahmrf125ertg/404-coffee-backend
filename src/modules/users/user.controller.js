@@ -451,6 +451,13 @@ const updateUserPageAccess = async (req, res, next) => {
     if (!user) { const error = new Error("User not found"); error.statusCode = 404; throw error; }
     const { pages } = req.body;
     if (!Array.isArray(pages)) { const error = new Error("pages must be an array"); error.statusCode = 400; throw error; }
+
+    await prisma.userPageAccess.upsert({
+      where: { userId },
+      update: { pages },
+      create: { userId, pages },
+    });
+
     await logAudit(req, "users", "edit_user", `Updated page access for user #${userId}`);
     res.status(200).json({ success: true, data: { userId, pages } });
   } catch (error) { next(error); }

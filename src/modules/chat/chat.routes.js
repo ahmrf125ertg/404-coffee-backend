@@ -2,6 +2,7 @@ const express = require("express");
 const rateLimit = require("express-rate-limit");
 
 const { chat } = require("./chat.controller");
+const authMiddleware = require("../../middlewares/auth.middleware");
 
 const { nodeEnv } = require("../../config/env");
 
@@ -15,6 +16,6 @@ const chatLimiter = rateLimit({
   skip: () => nodeEnv === "test",
 });
 
-router.post("/", chatLimiter, chat);
+router.post("/", authMiddleware, chatLimiter, chat);
 
 module.exports = router;

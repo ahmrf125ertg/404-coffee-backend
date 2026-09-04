@@ -22,9 +22,42 @@ const {
   createAddon,
   updateAddon,
   deleteAddon,
+  getCategories,
+  createCategory,
+  updateCategory,
+  deleteCategory,
 } = require("./product.controller");
 
 const router = express.Router();
+
+// Categories (must be before /:id to avoid conflict)
+router.get(
+  "/categories",
+  authMiddleware,
+  requirePermission("products", "view_products"),
+  getCategories
+);
+
+router.post(
+  "/categories",
+  authMiddleware,
+  requirePermission("products", "create_product"),
+  createCategory
+);
+
+router.put(
+  "/categories/:id",
+  authMiddleware,
+  requirePermission("products", "edit_product"),
+  updateCategory
+);
+
+router.delete(
+  "/categories/:id",
+  authMiddleware,
+  requirePermission("products", "delete_product"),
+  deleteCategory
+);
 
 // Get all products
 router.get(

@@ -115,25 +115,25 @@ const openShift = async (data, userId, ipAddress) => {
         throw error;
     }
 
-    const existingOpenShift = await prisma.cashDrawerShift.findFirst({
-        where: {
-            status: "OPEN",
-        },
-    });
+    const shift = await prisma.$transaction(async (tx) => {
+        const existingOpenShift = await tx.cashDrawerShift.findFirst({
+            where: { status: "OPEN" },
+        });
 
-    if (existingOpenShift) {
-        const error = new Error("A shift is already open");
-        error.statusCode = 400;
-        throw error;
-    }
+        if (existingOpenShift) {
+            const error = new Error("A shift is already open");
+            error.statusCode = 400;
+            throw error;
+        }
 
-    const shift = await prisma.cashDrawerShift.create({
-        data: {
-            openedByUserId: userId,
-            openingBalance,
-            notes: data.notes || null,
-        },
-        include: shiftInclude,
+        return tx.cashDrawerShift.create({
+            data: {
+                openedByUserId: userId,
+                openingBalance,
+                notes: data.notes || null,
+            },
+            include: shiftInclude,
+        });
     });
 
     await createAuditLog({
@@ -168,67 +168,63 @@ const closeShift = async (id, data, userId, ipAddress) => {
         throw error;
     }
 
-    const shift = await prisma.cashDrawerShift.findUnique({
-        where: {
-            id: shiftId,
-        },
-        include: {
-            transactions: true,
-        },
-    });
+    const updatedShift = await prisma.$transaction(async (tx) => {
+        const shift = await tx.cashDrawerShift.findUnique({
+            where: { id: shiftId },
+            include: { transactions: true },
+        });
 
-    if (!shift) {
-        const error = new Error("Cash drawer shift not found");
-        error.statusCode = 404;
-        throw error;
-    }
-
-    if (shift.status !== "OPEN") {
-        const error = new Error("Only open shifts can be closed");
-        error.statusCode = 400;
-        throw error;
-    }
-
-    let totalIn = 0;
-    let totalOut = 0;
-
-    for (const transaction of shift.transactions) {
-        if (IN_TYPES.includes(transaction.type)) {
-            totalIn += Number(transaction.amount);
-        } else if (OUT_TYPES.includes(transaction.type)) {
-            totalOut += Number(transaction.amount);
+        if (!shift) {
+            const error = new Error("Cash drawer shift not found");
+            error.statusCode = 404;
+            throw error;
         }
-    }
 
-    const closingBalance =
-        Math.round(
-            (Number(shift.openingBalance) + totalIn - totalOut) * 100
-        ) / 100;
+        if (shift.status !== "OPEN") {
+            const error = new Error("Only open shifts can be closed");
+            error.statusCode = 400;
+            throw error;
+        }
 
-    const difference =
-        Math.round((actualBalance - closingBalance) * 100) / 100;
+        let totalIn = 0;
+        let totalOut = 0;
 
-    const updatedShift = await prisma.cashDrawerShift.update({
-        where: {
-            id: shiftId,
-        },
-        data: {
-            status: "CLOSED",
-            closedAt: new Date(),
-            closedByUserId: userId,
-            closingBalance,
-            actualBalance,
-            difference,
-            ...(data.notes !== undefined && { notes: data.notes || null }),
-        },
-        include: shiftInclude,
+        for (const transaction of shift.transactions) {
+            if (IN_TYPES.includes(transaction.type)) {
+                totalIn += Number(transaction.amount);
+            } else if (OUT_TYPES.includes(transaction.type)) {
+                totalOut += Number(transaction.amount);
+            }
+        }
+
+        const closingBalance =
+            Math.round(
+                (Number(shift.openingBalance) + totalIn - totalOut) * 100
+            ) / 100;
+
+        const difference =
+            Math.round((actualBalance - closingBalance) * 100) / 100;
+
+        return tx.cashDrawerShift.update({
+            where: { id: shiftId },
+            data: {
+                status: "CLOSED",
+                closedAt: new Date(),
+                closedByUserId: userId,
+                closingBalance,
+                actualBalance,
+                difference,
+                ...(data.notes !== undefined && { notes: data.notes || null }),
+            },
+            include: shiftInclude,
+        });
     });
 
     await createAuditLog({
         userId,
         page: "cash_drawer_shifts",
         action: "close_shift",
-        description: `Closed shift #${shiftId} with closing balance ${closingBalance} and difference ${difference}`,
+        description: `Closed shift #${shiftId}`,
         ipAddress,
     });
 

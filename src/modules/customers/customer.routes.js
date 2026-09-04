@@ -27,6 +27,8 @@ router.get(
 
 router.get(
   "/lookup",
+  authMiddleware,
+  requirePermission("customers", "view_customers"),
   lookupCustomer
 );
 

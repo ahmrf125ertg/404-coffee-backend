@@ -16,11 +16,24 @@ const errorHandler = (err, req, res, next) => {
     );
   }
 
-  // في الـ production منحطش تفاصيل الخطأ الخام للمستخدم
-  const message =
-    statusCode >= 500 && nodeEnv === "production"
-      ? "Internal server error"
-      : err.message || "Internal server error";
+  let message;
+
+  if (nodeEnv === "production") {
+    if (statusCode >= 500) {
+      // Never leak internal details in production
+      message = "Internal server error";
+    } else {
+      // For 4xx: keep business error messages (e.g. "Invalid credentials"),
+      // but sanitize messages that look like internal/DB errors
+      const rawMsg = err.message || "Bad request";
+      const isInternalPattern =
+        /prisma|database|query|constraint|column|table|sequence|ECONNREFUSED/i.test(rawMsg);
+      message = isInternalPattern ? "Bad request" : rawMsg;
+    }
+  } else {
+    // Development: show full error messages
+    message = err.message || "Internal server error";
+  }
 
   res.status(statusCode).json({
     success: false,

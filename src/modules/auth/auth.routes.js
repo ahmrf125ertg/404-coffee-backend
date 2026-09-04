@@ -8,10 +8,19 @@ const { nodeEnv } = require("../../config/env");
 
 const router = express.Router();
 
-// حد سخي للحماية من brute-force — 60 محاولة / 15 دقيقة لكل IP
+// Rate limit for login — 10 attempts / 15 minutes per IP
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 60,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () => nodeEnv === "test",
+});
+
+// Rate limit for refresh token — 10 attempts / 15 minutes per IP
+const refreshLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
   standardHeaders: true,
   legacyHeaders: false,
   skip: () => nodeEnv === "test",
@@ -19,7 +28,7 @@ const loginLimiter = rateLimit({
 
 router.post("/login", loginLimiter, authController.loginUser);
 router.get("/me", authMiddleware, authController.getMe);
-router.post("/refresh", authController.refreshToken);
+router.post("/refresh", refreshLimiter, authController.refreshToken);
 router.post("/logout", authMiddleware, authController.logoutUser);
 
 module.exports = router;

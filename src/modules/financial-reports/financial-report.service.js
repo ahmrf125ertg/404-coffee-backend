@@ -29,50 +29,57 @@ const buildDateWhere = (field, { from, to }) => {
 // ============================================================
 
 const getSalesReport = async (query = {}) => {
-    const sales = await prisma.sale.findMany({
-        where: buildDateWhere("createdAt", query),
-        orderBy: {
-            createdAt: "desc",
-        },
-        include: {
-            customer: {
-                select: {
-                    id: true,
-                    name: true,
-                    phone: true,
+    const { skip, take, page, pageSize } = parsePagination(query);
+    const dateWhere = buildDateWhere("createdAt", query);
+
+    const [sales, total, summaryAgg] = await Promise.all([
+        prisma.sale.findMany({
+            where: dateWhere,
+            orderBy: { createdAt: "desc" },
+            include: {
+                customer: {
+                    select: { id: true, name: true, phone: true },
                 },
+                items: true,
             },
-            items: true,
-        },
-    });
-
-    let subtotal = 0;
-    let discount = 0;
-    let total = 0;
-
-    const byPaymentMethod = {};
-
-    for (const sale of sales) {
-        subtotal += Number(sale.subtotal);
-        discount += Number(sale.discount);
-        total += Number(sale.total);
-
-        byPaymentMethod[sale.paymentMethod] =
-            (byPaymentMethod[sale.paymentMethod] || 0) +
-            Number(sale.total);
-    }
+            skip,
+            take,
+        }),
+        prisma.sale.count({ where: dateWhere }),
+        prisma.sale.aggregate({
+            where: dateWhere,
+            _sum: { subtotal: true, discount: true, total: true },
+        }),
+    ]);
 
     const rounded = (value) => Math.round(value * 100) / 100;
 
+    // Compute byPaymentMethod from all matching sales (not just this page)
+    const allSales = await prisma.sale.findMany({
+        where: dateWhere,
+        select: { paymentMethod: true, total: true },
+    });
+    const byPaymentMethod = {};
+    for (const sale of allSales) {
+        byPaymentMethod[sale.paymentMethod] =
+            (byPaymentMethod[sale.paymentMethod] || 0) + Number(sale.total);
+    }
+
     return {
         summary: {
-            salesCount: sales.length,
-            subtotal: rounded(subtotal),
-            discount: rounded(discount),
-            total: rounded(total),
+            salesCount: total,
+            subtotal: rounded(Number(summaryAgg._sum?.subtotal) || 0),
+            discount: rounded(Number(summaryAgg._sum?.discount) || 0),
+            total: rounded(Number(summaryAgg._sum?.total) || 0),
             byPaymentMethod,
         },
-        sales,
+        data: sales,
+        pagination: {
+            page,
+            pageSize,
+            total,
+            totalPages: Math.ceil(total / pageSize),
+        },
     };
 };
 
@@ -81,51 +88,35 @@ const getSalesReport = async (query = {}) => {
 // ============================================================
 
 const getProfitReport = async (query = {}) => {
-    const sales = await prisma.sale.findMany({
-        where: buildDateWhere("createdAt", query),
-        orderBy: {
-            createdAt: "desc",
-        },
-        include: {
-            items: {
-                include: {
-                    product: {
-                        select: {
-                            id: true,
-                            name: true,
-                        },
-                    },
-                    productSize: true,
-                },
+    const dateWhere = buildDateWhere("createdAt", query);
+
+    const [salesAgg, costAgg] = await Promise.all([
+        prisma.sale.aggregate({
+            where: dateWhere,
+            _sum: { total: true },
+        }),
+        prisma.saleItem.aggregate({
+            where: {
+                sale: dateWhere.createdAt ? {
+                    createdAt: dateWhere.createdAt,
+                    status: "COMPLETED",
+                } : { status: "COMPLETED" },
             },
-        },
-    });
+            _sum: { totalPrice: true },
+        }),
+    ]);
 
     const rounded = (value) => Math.round(value * 100) / 100;
 
-    let revenue = 0;
-    let estimatedCost = 0;
-
-    for (const sale of sales) {
-        for (const item of sale.items) {
-            revenue += Number(item.totalPrice);
-
-            if (item.productSize && item.productSize.basePrice) {
-                estimatedCost +=
-                    Number(item.productSize.basePrice) *
-                    Number(item.quantity);
-            }
-        }
-    }
-
+    const revenue = rounded(Number(salesAgg._sum?.total) || 0);
+    const estimatedCost = rounded(Number(costAgg._sum?.totalPrice) || 0);
     const profit = rounded(revenue - estimatedCost);
-    const profitMargin =
-        revenue > 0 ? rounded((profit / revenue) * 100) : 0;
+    const profitMargin = revenue > 0 ? rounded((profit / revenue) * 100) : 0;
 
     return {
         summary: {
-            revenue: rounded(revenue),
-            estimatedCost: rounded(estimatedCost),
+            revenue,
+            estimatedCost,
             profit,
             profitMargin,
         },

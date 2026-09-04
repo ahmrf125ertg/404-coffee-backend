@@ -4,9 +4,19 @@ const jwt = require("jsonwebtoken");
 
 const prisma = require("../../lib/prisma");
 
-const { jwtSecret, jwtExpiresIn } = require("../../config/env");
+const { jwtSecret, jwtRefreshSecret, jwtExpiresIn, jwtRefreshExpiresIn } = require("../../config/env");
 
 const { getExpandedPermissions, PAGES } = require("../../config/roles.config");
+
+const parseExpiresIn = (value) => {
+  if (typeof value === "number") return value;
+  const match = String(value).match(/^(\d+)(s|m|h|d)$/);
+  if (!match) return 3600;
+  const num = parseInt(match[1], 10);
+  const unit = match[2];
+  const multipliers = { s: 1, m: 60, h: 3600, d: 86400 };
+  return num * (multipliers[unit] || 3600);
+};
 
 // ============================================================
 // Page metadata for frontend sidebar
@@ -407,19 +417,21 @@ const loginUser = async ({ name, username, password, deviceFingerprint }) => {
 
   const refreshToken = jwt.sign(
     { userId: user.id, type: "refresh" },
-    jwtSecret,
-    { expiresIn: "7d" }
+    jwtRefreshSecret,
+    { expiresIn: jwtRefreshExpiresIn }
   );
 
   const employee = buildEmployee(user);
   const role = buildRole(user.role);
   const permissions = buildPermissions(user.role);
 
+  const expiresInSeconds = parseExpiresIn(jwtExpiresIn);
+
   return {
     auth: {
       access_token: token,
       refresh_token: refreshToken,
-      expires_in: 3600,
+      expires_in: expiresInSeconds,
       token_type: "Bearer",
     },
     employee,
@@ -476,7 +488,7 @@ const refreshToken = async (refreshTokenValue) => {
         throw error;
     }
     try {
-        const decoded = jwt.verify(refreshTokenValue, jwtSecret);
+        const decoded = jwt.verify(refreshTokenValue, jwtRefreshSecret, { algorithms: ["HS256"] });
         if (decoded.type !== "refresh") {
             const error = new Error("Invalid refresh token");
             error.statusCode = 401;
@@ -489,8 +501,9 @@ const refreshToken = async (refreshTokenValue) => {
             throw error;
         }
         const access_token = jwt.sign({ userId: user.id, role: user.role }, jwtSecret, { expiresIn: jwtExpiresIn });
-        const new_refresh_token = jwt.sign({ userId: user.id, type: "refresh" }, jwtSecret, { expiresIn: "7d" });
-        return { access_token, refresh_token: new_refresh_token, expires_in: 3600 };
+        const new_refresh_token = jwt.sign({ userId: user.id, type: "refresh" }, jwtRefreshSecret, { expiresIn: jwtRefreshExpiresIn });
+        const expiresInSeconds = parseExpiresIn(jwtExpiresIn);
+        return { access_token, refresh_token: new_refresh_token, expires_in: expiresInSeconds };
     } catch (error) {
         if (error.name === "TokenExpiredError" || error.name === "JsonWebTokenError") {
             const e = new Error("Invalid or expired refresh token");

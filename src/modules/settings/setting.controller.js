@@ -18,6 +18,22 @@ const getSettings = async (req, res, next) => {
 };
 
 // ============================================================
+// Get single setting by key
+// ============================================================
+
+const getSettingByKey = async (req, res, next) => {
+    try {
+        const setting = await settingService.getSettingByKey(req.params.key);
+        if (!setting) {
+            return res.status(404).json({ success: false, message: "Setting not found" });
+        }
+        res.status(200).json({ success: true, data: setting });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// ============================================================
 // Update single setting
 // ============================================================
 
@@ -64,6 +80,7 @@ const updateSettingsBulk = async (req, res, next) => {
 
 module.exports = {
     getSettings,
+    getSettingByKey,
     updateSetting,
     updateSettingsBulk,
 };

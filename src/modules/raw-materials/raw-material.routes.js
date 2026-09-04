@@ -10,9 +10,18 @@ const {
   deleteRawMaterial,
   addBatch,
   getMaterialBatches,
+  getRawMaterialsOptions,
 } = require("./raw-material.controller");
 
 const router = express.Router();
+
+// Get raw materials options (for dropdowns)
+router.get(
+  "/options",
+  authMiddleware,
+  requirePermission("inventory", "view_inventory"),
+  getRawMaterialsOptions
+);
 
 // Get all raw materials
 router.get(

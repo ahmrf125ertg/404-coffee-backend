@@ -34,7 +34,7 @@ const authMiddleware = async (req, res, next) => {
     }
 
     // verify JWT token
-    const decoded = jwt.verify(token, jwtSecret);
+    const decoded = jwt.verify(token, jwtSecret, { algorithms: ["HS256"] });
 
     // Re-check the user still exists and is ACTIVE so a suspended
     // (or deleted) account loses access immediately

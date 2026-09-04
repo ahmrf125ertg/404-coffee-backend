@@ -340,8 +340,92 @@ const deleteAddon = async (req, res, next) => {
     }
 };
 
+const prisma = require("../../lib/prisma");
 
+const getCategories = async (req, res, next) => {
+    try {
+        const categories = await prisma.productCategory.findMany({
+            orderBy: { name: "asc" },
+        });
+        res.status(200).json({ success: true, data: categories });
+    } catch (error) {
+        next(error);
+    }
+};
 
+const createCategory = async (req, res, next) => {
+    try {
+        const { name } = req.body;
+        if (!name || !name.trim()) {
+            return res.status(400).json({ success: false, message: "Category name is required" });
+        }
+        const existing = await prisma.productCategory.findUnique({ where: { name: name.trim() } });
+        if (existing) {
+            return res.status(400).json({ success: false, message: "Category already exists" });
+        }
+        const category = await prisma.productCategory.create({
+            data: { name: name.trim() },
+        });
+        res.status(201).json({ success: true, message: "Category created", data: category });
+    } catch (error) {
+        next(error);
+    }
+};
+
+const updateCategory = async (req, res, next) => {
+    try {
+        const id = Number(req.params.id);
+        if (!Number.isInteger(id) || id <= 0) {
+            return res.status(400).json({ success: false, message: "Invalid category ID" });
+        }
+        const { name, isActive } = req.body;
+        const existing = await prisma.productCategory.findUnique({ where: { id } });
+        if (!existing) {
+            return res.status(404).json({ success: false, message: "Category not found" });
+        }
+        if (name && name.trim() !== existing.name) {
+            const dup = await prisma.productCategory.findUnique({ where: { name: name.trim() } });
+            if (dup) {
+                return res.status(400).json({ success: false, message: "Category name already exists" });
+            }
+        }
+        const category = await prisma.productCategory.update({
+            where: { id },
+            data: {
+                ...(name !== undefined && { name: name.trim() }),
+                ...(isActive !== undefined && { isActive }),
+            },
+        });
+        res.status(200).json({ success: true, message: "Category updated", data: category });
+    } catch (error) {
+        next(error);
+    }
+};
+
+const deleteCategory = async (req, res, next) => {
+    try {
+        const id = Number(req.params.id);
+        if (!Number.isInteger(id) || id <= 0) {
+            return res.status(400).json({ success: false, message: "Invalid category ID" });
+        }
+        const existing = await prisma.productCategory.findUnique({ where: { id } });
+        if (!existing) {
+            return res.status(404).json({ success: false, message: "Category not found" });
+        }
+        // Check if any products use this category
+        const productCount = await prisma.product.count({ where: { categoryId: id } });
+        if (productCount > 0) {
+            return res.status(400).json({
+                success: false,
+                message: `Cannot delete category: ${productCount} product(s) still use it`,
+            });
+        }
+        await prisma.productCategory.delete({ where: { id } });
+        res.status(200).json({ success: true, message: "Category deleted" });
+    } catch (error) {
+        next(error);
+    }
+};
 
 module.exports = {
     getProducts,
@@ -362,4 +446,8 @@ module.exports = {
     createAddon,
     updateAddon,
     deleteAddon,
+    getCategories,
+    createCategory,
+    updateCategory,
+    deleteCategory,
 };

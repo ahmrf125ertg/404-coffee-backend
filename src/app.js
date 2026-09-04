@@ -46,7 +46,20 @@ const app = express();
 // Security
 // ============================================================
 app.use(helmet());
-app.use(cors());
+const allowedOrigins = process.env.CORS_ORIGINS
+  ? process.env.CORS_ORIGINS.split(",")
+  : ["http://localhost:3000", "http://localhost:5173", "http://localhost:5174"];
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  credentials: true,
+}));
 
 // Rate limiting عام — حدود سخية (النظام شبه مغلق)، بيتعطل في الـ tests
 app.use(
@@ -74,8 +87,8 @@ app.use(
 // ============================================================
 // Parsing
 // ============================================================
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 
 // ============================================================
 // Health

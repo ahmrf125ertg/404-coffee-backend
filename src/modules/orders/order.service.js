@@ -34,6 +34,22 @@ const validateAndPrepareItems = async (items) => {
     const orderItems = [];
     let subtotal = 0;
 
+    // Batch-fetch all products and sizes to avoid N+1 queries
+    const productIds = [...new Set(items.map((item) => Number(item.productId)).filter((id) => Number.isInteger(id) && id > 0))];
+    const sizeIds = [...new Set(items.map((item) => Number(item.productSizeId)).filter((id) => Number.isInteger(id) && id > 0))];
+
+    if (productIds.length === 0 || sizeIds.length === 0) {
+        throw httpError("Invalid order item data");
+    }
+
+    const [products, productSizes] = await Promise.all([
+        prisma.product.findMany({ where: { id: { in: productIds } } }),
+        prisma.productSize.findMany({ where: { id: { in: sizeIds } } }),
+    ]);
+
+    const productMap = new Map(products.map((p) => [p.id, p]));
+    const sizeMap = new Map(productSizes.map((s) => [s.id, s]));
+
     for (const item of items) {
         const productId = Number(item.productId);
         const productSizeId = Number(item.productSizeId);
@@ -50,12 +66,7 @@ const validateAndPrepareItems = async (items) => {
             throw httpError("Invalid order item data");
         }
 
-        const product = await prisma.product.findUnique({
-            where: {
-                id: productId,
-            },
-        });
-
+        const product = productMap.get(productId);
         if (!product) {
             throw httpError(
                 `Product with ID ${item.productId} not found`,
@@ -63,12 +74,7 @@ const validateAndPrepareItems = async (items) => {
             );
         }
 
-        const productSize = await prisma.productSize.findUnique({
-            where: {
-                id: productSizeId,
-            },
-        });
-
+        const productSize = sizeMap.get(productSizeId);
         if (!productSize) {
             throw httpError(
                 `Product size with ID ${item.productSizeId} not found`,
@@ -309,30 +315,33 @@ const createOrder = async (data) => {
         : null;
 
     // --------------------------------------------------------
-    // Create order
+    // Create order (transactional: order + items)
     // --------------------------------------------------------
 
-    const order = await prisma.order.create({
-        data: {
-            orderNumber,
-            customerName: resolvedCustomerName,
-            customerId: resolvedCustomerId,
-            delegateId: delegateId ? Number(delegateId) : null,
-            orderType: resolvedOrderType,
-            channel: channel || null,
-            fulfillmentType: fulfillmentType || null,
-            table: tableNumber || null,
-            phone: phone || resolvedCustomerPhone,
-            deliveryAddress: deliveryAddress || null,
-            subtotal,
-            discount: discountValue,
-            total,
-            paymentMethod,
-            notes: notes || null,
-            trackingToken,
-            items: { create: orderItems },
-        },
-        include: getOrderInclude,
+    const order = await prisma.$transaction(async (tx) => {
+        const created = await tx.order.create({
+            data: {
+                orderNumber,
+                customerName: resolvedCustomerName,
+                customerId: resolvedCustomerId,
+                delegateId: delegateId ? Number(delegateId) : null,
+                orderType: resolvedOrderType,
+                channel: channel || null,
+                fulfillmentType: fulfillmentType || null,
+                table: tableNumber || null,
+                phone: phone || resolvedCustomerPhone,
+                deliveryAddress: deliveryAddress || null,
+                subtotal,
+                discount: discountValue,
+                total,
+                paymentMethod,
+                notes: notes || null,
+                trackingToken,
+                items: { create: orderItems },
+            },
+            include: getOrderInclude,
+        });
+        return created;
     });
 
     // Generate barcode for the order number
@@ -521,7 +530,12 @@ const updateOrder = async (id, data) => {
     }
 
     if (status !== undefined) {
-        updateData.status = status;
+        // Status changes must go through updateOrderStatus to enforce
+        // transition rules, inventory deduction, and financial effects.
+        // Remove status from the basic update data; it will be handled separately.
+        if (status !== existingOrder.status) {
+            throw httpError("To change order status, use PATCH /api/orders/:id/status or the dedicated status endpoints");
+        }
     }
 
     if (notes !== undefined) {
@@ -646,6 +660,15 @@ const deleteOrder = async (id) => {
 
     if (!existingOrder) {
         throw httpError("Order not found", 404);
+    }
+
+    // Prevent deletion of orders in active/completed states
+    if (existingOrder.status === "COMPLETED") {
+        throw httpError("Cannot delete a completed order. Use cancel instead.", 400);
+    }
+
+    if (existingOrder.status === "PREPARING" || existingOrder.status === "READY") {
+        throw httpError("Cannot delete an order that is being prepared or ready. Cancel it first.", 400);
     }
 
     const order = await prisma.order.delete({
@@ -915,7 +938,12 @@ const updateOrderStatus = async (id, data, userId) => {
 
         // COMPLETED: create sale + drawer transaction
         if (status === "COMPLETED" && existingOrder.status !== "COMPLETED") {
-            const { sale, drawerTransaction } = await createOrderCompletionSale(tx, order, userId || order.customerId || 1);
+            const { sale, drawerTransaction } = await createOrderCompletionSale(tx, order, userId || 1);
+            // Link sale to order
+            await tx.order.update({
+                where: { id: orderId },
+                data: { saleId: sale.id },
+            });
             financialEffect = {
                 saleId: sale.id,
                 total: Number(order.total),
@@ -956,23 +984,29 @@ const deductInventoryForOrder = async (tx, orderId) => {
         const quantity = Number(item.quantity);
         for (const ing of item.productSize.ingredients) {
             const ingredientQty = Number(ing.quantity) * quantity;
-            // Find batch with enough stock
+            if (ingredientQty <= 0) continue;
+
+            // Find batch with enough stock (FIFO: oldest first)
             const batch = await tx.rawMaterialBatch.findFirst({
                 where: { rawMaterialId: ing.rawMaterialId, quantity: { gte: ingredientQty } },
                 orderBy: { addedAt: "asc" },
             });
 
-            if (batch) {
-                await tx.rawMaterialBatch.update({
-                    where: { id: batch.id },
-                    data: { quantity: { decrement: ingredientQty } },
-                });
-                deductions.push({
-                    rawMaterialId: ing.rawMaterialId,
-                    batchId: batch.id,
-                    deductedQty: ingredientQty,
-                });
+            if (!batch) {
+                const mat = await tx.rawMaterial.findUnique({ where: { id: ing.rawMaterialId }, select: { name: true } });
+                const matName = mat ? mat.name : `RawMaterial#${ing.rawMaterialId}`;
+                throw httpError(`Insufficient inventory for "${matName}": need ${ingredientQty} but no single batch has enough stock`, 400);
             }
+
+            await tx.rawMaterialBatch.update({
+                where: { id: batch.id },
+                data: { quantity: { decrement: ingredientQty } },
+            });
+            deductions.push({
+                rawMaterialId: ing.rawMaterialId,
+                batchId: batch.id,
+                deductedQty: ingredientQty,
+            });
         }
     }
 
@@ -1020,7 +1054,7 @@ const handOverOrderToDelegate = async (orderId, delegateId) => {
 // Close table order
 // ============================================================
 
-const closeTableOrder = async (tableNumber) => {
+const closeTableOrder = async (tableNumber, userId) => {
     if (!tableNumber) {
         throw httpError("Table number is required");
     }
@@ -1031,23 +1065,94 @@ const closeTableOrder = async (tableNumber) => {
             table: tableNumber,
             status: { notIn: ["COMPLETED", "CANCELLED"] },
         },
+        include: getOrderInclude,
     });
 
     if (activeOrders.length === 0) {
         throw httpError("No active orders for this table", 404);
     }
 
-    const updatedOrders = [];
-    for (const o of activeOrders) {
-        const updated = await prisma.order.update({
-            where: { id: o.id },
-            data: { status: "COMPLETED" },
-            include: getOrderInclude,
-        });
-        updatedOrders.push(updated);
-    }
+    const result = await prisma.$transaction(async (tx) => {
+        const updatedOrders = [];
 
-    return updatedOrders;
+        // Deduct inventory for all orders that haven't had it deducted yet
+        for (const o of activeOrders) {
+            if (o.status === "PENDING") {
+                await deductInventoryForOrder(tx, o.id);
+            }
+        }
+
+        for (const o of activeOrders) {
+            const updated = await tx.order.update({
+                where: { id: o.id },
+                data: { status: "COMPLETED", version: { increment: 1 } },
+                include: getOrderInclude,
+            });
+            updatedOrders.push(updated);
+        }
+
+        const firstOrder = updatedOrders[0];
+        const totalPaid = updatedOrders.reduce((s, o) => s + Number(o.total), 0);
+        const totalDiscount = updatedOrders.reduce((s, o) => s + Number(o.discount), 0);
+
+        const sale = await tx.sale.create({
+            data: {
+                customerId: firstOrder.customerId,
+                subtotal: updatedOrders.reduce((s, o) => s + Number(o.subtotal), 0),
+                discount: totalDiscount,
+                total: totalPaid,
+                paymentMethod: firstOrder.paymentMethod,
+                status: "COMPLETED",
+            },
+        });
+
+        // Set saleId on all orders
+        for (const o of updatedOrders) {
+            await tx.order.update({
+                where: { id: o.id },
+                data: { saleId: sale.id },
+            });
+        }
+
+        for (const o of updatedOrders) {
+            const orderItems = await tx.orderItem.findMany({ where: { orderId: o.id } });
+            if (orderItems.length > 0) {
+                await tx.saleItem.createMany({
+                    data: orderItems.map((item) => ({
+                        saleId: sale.id,
+                        productId: item.productId,
+                        productSizeId: item.productSizeId,
+                        quantity: item.quantity,
+                        unitPrice: item.unitPrice,
+                        totalPrice: item.totalPrice,
+                    })),
+                });
+            }
+        }
+
+        let drawerTransaction = null;
+        if (firstOrder.paymentMethod === "CASH") {
+            const openShift = await tx.cashDrawerShift.findFirst({
+                where: { status: "OPEN" },
+                orderBy: { openedAt: "desc" },
+            });
+            if (openShift) {
+                drawerTransaction = await tx.cashDrawerTransaction.create({
+                    data: {
+                        shiftId: openShift.id,
+                        type: "SALES",
+                        amount: totalPaid,
+                        description: `Table ${tableNumber} closed`,
+                        recordedByUserId: userId || 1,
+                    },
+                });
+            }
+        }
+
+        return { orders: updatedOrders, sale, drawerTransaction };
+    });
+
+    return result;
 };
 
 // ============================================================
@@ -1172,16 +1277,16 @@ const createOrderCompletionSale = async (tx, order, userId) => {
     });
 
     const orderItems = await tx.orderItem.findMany({ where: { orderId: order.id } });
-    for (const item of orderItems) {
-        await tx.saleItem.create({
-            data: {
+    if (orderItems.length > 0) {
+        await tx.saleItem.createMany({
+            data: orderItems.map((item) => ({
                 saleId: sale.id,
                 productId: item.productId,
                 productSizeId: item.productSizeId,
                 quantity: item.quantity,
                 unitPrice: item.unitPrice,
                 totalPrice: item.totalPrice,
-            },
+            })),
         });
     }
 
@@ -1257,7 +1362,7 @@ const restoreInventoryForOrder = async (tx, orderId) => {
 // Cancel order (with optional restoreInventory)
 // ============================================================
 
-const cancelOrder = async (id, data = {}) => {
+const cancelOrder = async (id, data = {}, userId) => {
     const orderId = Number(id);
     const { reason = "Cancelled by admin", restoreInventory = true } = typeof data === "string" ? { reason: data } : data;
 
@@ -1276,8 +1381,20 @@ const cancelOrder = async (id, data = {}) => {
             include: getOrderInclude,
         });
 
+        // Store cancellation reason as an OrderEvent
+        await tx.orderEvent.create({
+            data: {
+                orderId,
+                type: "CANCELLED",
+                status: "CANCELLED",
+                notes: reason,
+                userId: userId || null,
+            },
+        });
+
         let restoredBatches = [];
-        if (restoreInventory) {
+        // Restore inventory only if it was deducted (order was at least PREPARING)
+        if (restoreInventory && (existing.status === "PREPARING" || existing.status === "READY")) {
             restoredBatches = await restoreInventoryForOrder(tx, orderId);
         }
 
@@ -1342,14 +1459,31 @@ const getOrderEvents = async (orderId, filters = {}) => {
 // Start preparation
 // ============================================================
 
-const startPreparation = async (id) => {
+const startPreparation = async (id, userId) => {
     const orderId = Number(id);
     if (!Number.isInteger(orderId) || orderId <= 0) throw httpError("Invalid order ID");
     const existing = await prisma.order.findUnique({ where: { id: orderId } });
     if (!existing) throw httpError("Order not found", 404);
-    await prisma.orderItem.updateMany({ where: { orderId, status: "PENDING" }, data: { status: "PREPARING" } });
-    const order = await prisma.order.update({ where: { id: orderId }, data: { status: "PREPARING" }, include: getOrderInclude });
-    return order;
+
+    if (existing.status !== "PENDING") {
+        throw httpError(`Cannot start preparation from status ${existing.status}. Order must be PENDING.`);
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+        // Deduct inventory (same as updateOrderStatus PENDING→PREPARING)
+        const inventoryEffect = await deductInventoryForOrder(tx, orderId);
+
+        await tx.orderItem.updateMany({ where: { orderId, status: "PENDING" }, data: { status: "PREPARING" } });
+        const order = await tx.order.update({
+            where: { id: orderId },
+            data: { status: "PREPARING", version: { increment: 1 } },
+            include: getOrderInclude,
+        });
+
+        return { order, inventoryEffect };
+    });
+
+    return result;
 };
 
 // ============================================================
@@ -1445,6 +1579,13 @@ const checkoutTable = async (tableNumber, data, userId) => {
         const updatedOrders = [];
         let totalPaid = 0;
 
+        // Deduct inventory for all orders that haven't had it deducted yet
+        for (const o of activeOrders) {
+            if (o.status === "PENDING") {
+                await deductInventoryForOrder(tx, o.id);
+            }
+        }
+
         for (const o of activeOrders) {
             const updated = await tx.order.update({
                 where: { id: o.id },
@@ -1460,30 +1601,40 @@ const checkoutTable = async (tableNumber, data, userId) => {
         }
 
         // Create a single sale covering all table orders
+        // Use checkout-level discount only (not per-order discounts, which are already in order.total)
         const firstOrder = updatedOrders[0];
+        const checkoutDiscount = discount || 0;
         const sale = await tx.sale.create({
             data: {
                 customerId: firstOrder.customerId,
-                subtotal: updatedOrders.reduce((s, o) => s + Number(o.subtotal), 0),
-                discount: discount || 0,
-                total: totalPaid - (discount || 0),
+                subtotal: totalPaid,
+                discount: checkoutDiscount,
+                total: totalPaid - checkoutDiscount,
                 paymentMethod: paymentMethod || firstOrder.paymentMethod,
                 status: "COMPLETED",
             },
         });
 
+        // Set saleId on all orders
+        for (const o of updatedOrders) {
+            await tx.order.update({
+                where: { id: o.id },
+                data: { saleId: sale.id },
+            });
+        }
+
         for (const o of updatedOrders) {
             const orderItems = await tx.orderItem.findMany({ where: { orderId: o.id } });
-            for (const item of orderItems) {
-                await tx.saleItem.create({
-                    data: {
+            if (orderItems.length > 0) {
+                await tx.saleItem.createMany({
+                    data: orderItems.map((item) => ({
                         saleId: sale.id,
                         productId: item.productId,
                         productSizeId: item.productSizeId,
                         quantity: item.quantity,
                         unitPrice: item.unitPrice,
                         totalPrice: item.totalPrice,
-                    },
+                    })),
                 });
             }
         }
@@ -1501,9 +1652,9 @@ const checkoutTable = async (tableNumber, data, userId) => {
                     data: {
                         shiftId: openShift.id,
                         type: "SALES",
-                        amount: totalPaid - (discount || 0),
+                        amount: totalPaid - checkoutDiscount,
                         description: `Table ${tableNumber} checkout`,
-                        recordedByUserId: userId || firstOrder.customerId || 1,
+                        recordedByUserId: userId || 1,
                     },
                 });
             }
@@ -1530,9 +1681,9 @@ const checkoutTable = async (tableNumber, data, userId) => {
         const invoice = {
             invoiceNumber: firstOrder.orderNumber,
             items: allItems,
-            subtotal: updatedOrders.reduce((s, o) => s + Number(o.subtotal), 0),
-            discount: discount || 0,
-            total: totalPaid - (discount || 0),
+            subtotal: totalPaid,
+            discount: checkoutDiscount,
+            total: totalPaid - checkoutDiscount,
             paymentMethod: effectivePayment,
         };
 
@@ -1597,10 +1748,15 @@ const completeDelivery = async (orderId, data = {}, userId) => {
         });
 
         // Create sale + drawer transaction (shared helper)
-        const { sale, drawerTransaction } = await createOrderCompletionSale(tx, order, userId || existing.customerId || 1);
+        // NOTE: Inventory was already deducted at PENDING→PREPARING transition.
+        // Do NOT deduct again here.
+        const { sale, drawerTransaction } = await createOrderCompletionSale(tx, order, userId || 1);
 
-        // Deduct inventory
-        await deductInventoryForOrder(tx, orderIdNum);
+        // Link sale to order
+        await tx.order.update({
+            where: { id: orderIdNum },
+            data: { saleId: sale.id },
+        });
 
         return { order, sale, drawerTransaction, deliveredAt: order.deliveredAt };
     });

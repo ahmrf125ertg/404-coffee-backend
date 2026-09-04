@@ -389,6 +389,22 @@ const getMaterialBatches = async (rawMaterialId) => {
     return batches;
 };
 
+// ============================================================
+// Get raw materials options (for dropdowns)
+// ============================================================
+
+const getRawMaterialsOptions = async () => {
+    const materials = await prisma.rawMaterial.findMany({
+        select: {
+            id: true,
+            name: true,
+            unit: true,
+        },
+        orderBy: { name: "asc" },
+    });
+    return materials;
+};
+
 module.exports = {
     getRawMaterials,
     createRawMaterial,
@@ -396,4 +412,5 @@ module.exports = {
     deleteRawMaterial,
     addBatch,
     getMaterialBatches,
+    getRawMaterialsOptions,
 };

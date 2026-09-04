@@ -127,8 +127,19 @@ const updateSettingsBulk = async (data, userId, ipAddress) => {
     return getSettings();
 };
 
+// ============================================================
+// Get single setting by key
+// ============================================================
+
+const getSettingByKey = async (key) => {
+    if (!key) return null;
+    const setting = await prisma.setting.findUnique({ where: { key } });
+    return setting;
+};
+
 module.exports = {
     getSettings,
+    getSettingByKey,
     updateSetting,
     updateSettingsBulk,
 };

@@ -36,7 +36,7 @@ const getMe = async (req, res, next) => {
 
 const refreshToken = async (req, res, next) => {
     try {
-        const token = req.body.refreshToken || req.headers.authorization?.split(" ")[1];
+        const token = req.body.refreshToken;
         const result = await authService.refreshToken(token);
         res.status(200).json({ success: true, data: result });
     } catch (error) {

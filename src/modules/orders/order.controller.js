@@ -255,11 +255,12 @@ const handOverOrderToDelegate = async (req, res, next) => {
 
 const closeTableOrder = async (req, res, next) => {
     try {
-        const orders = await orderService.closeTableOrder(
-            req.params.tableNumber
+        const result = await orderService.closeTableOrder(
+            req.params.tableNumber,
+            req.user?.userId
         );
 
-        for (const order of orders) {
+        for (const order of result.orders) {
             emitOrderUpdated(order);
         }
 
@@ -267,7 +268,7 @@ const closeTableOrder = async (req, res, next) => {
         return res.status(200).json({
             success: true,
             message: "Table closed successfully",
-            data: orders,
+            data: result,
         });
     } catch (error) {
         next(error);
@@ -301,7 +302,7 @@ const cancelOrder = async (req, res, next) => {
         const result = await orderService.cancelOrder(req.params.id, {
             reason: req.body.reason || "Cancelled by admin",
             restoreInventory: req.body.restoreInventory !== false,
-        });
+        }, req.user?.userId);
         emitOrderUpdated(result.order);
         await logAudit(req, "orders", "edit_order", `Order ${result.order.orderNumber} cancelled`);
         return res.status(200).json({
@@ -349,10 +350,10 @@ const getOrderEvents = async (req, res, next) => {
 
 const startPreparation = async (req, res, next) => {
     try {
-        const order = await orderService.startPreparation(req.params.id);
-        emitOrderUpdated(order);
-        await logAudit(req, "orders", "edit_order", `Order ${order.orderNumber} preparation started`);
-        return res.status(200).json({ success: true, message: "Preparation started", data: order });
+        const result = await orderService.startPreparation(req.params.id, req.user?.userId);
+        emitOrderUpdated(result.order);
+        await logAudit(req, "orders", "edit_order", `Order ${result.order.orderNumber} preparation started`);
+        return res.status(200).json({ success: true, message: "Preparation started", data: result });
     } catch (error) { next(error); }
 };
 

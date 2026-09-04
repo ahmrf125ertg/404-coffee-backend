@@ -4,18 +4,18 @@ const warningService = require("../warnings/warning.service");
 const getDashboard = async (filters = {}) => {
     const { date, shiftId } = filters;
 
-    // Date filtering
+    // Date filtering — use UTC to match how Prisma stores dates
     let dateStart, dateEnd;
     if (date) {
         dateStart = new Date(date);
-        dateStart.setHours(0, 0, 0, 0);
+        dateStart.setUTCHours(0, 0, 0, 0);
         dateEnd = new Date(dateStart);
-        dateEnd.setDate(dateEnd.getDate() + 1);
+        dateEnd.setUTCDate(dateEnd.getUTCDate() + 1);
     } else {
         dateStart = new Date();
-        dateStart.setHours(0, 0, 0, 0);
+        dateStart.setUTCHours(0, 0, 0, 0);
         dateEnd = new Date(dateStart);
-        dateEnd.setDate(dateEnd.getDate() + 1);
+        dateEnd.setUTCDate(dateEnd.getUTCDate() + 1);
     }
 
     const [
@@ -30,26 +30,28 @@ const getDashboard = async (filters = {}) => {
         supplierCount,
         delegateCount,
         rawMaterials,
-        allSales,
+        profitAgg,
         allProducts,
     ] = await Promise.all([
-        prisma.sale.findMany({
+        prisma.sale.aggregate({
             where: {
                 createdAt: { gte: dateStart, lt: dateEnd },
                 status: "COMPLETED",
             },
-            select: { total: true },
+            _count: true,
+            _sum: { total: true },
         }),
         prisma.sale.aggregate({
             where: { status: "COMPLETED" },
             _count: true,
-            _sum: { total: true },
+            _sum: { total: true, subtotal: true, discount: true },
         }),
-        prisma.order.findMany({
+        prisma.order.aggregate({
             where: {
                 createdAt: { gte: dateStart, lt: dateEnd },
             },
-            select: { total: true },
+            _count: true,
+            _sum: { total: true },
         }),
         prisma.order.aggregate({
             _count: true,
@@ -81,10 +83,12 @@ const getDashboard = async (filters = {}) => {
         prisma.rawMaterial.findMany({
             include: { batches: true },
         }),
-        prisma.sale.findMany({
-            where: { status: "COMPLETED" },
-            select: { subtotal: true, discount: true, total: true, items: { select: { unitPrice: true, totalPrice: true, quantity: true } } },
-        }),
+        prisma.$queryRaw`
+            SELECT COALESCE(SUM(si."unitPrice" * si."quantity"), 0)::float AS "totalCost"
+            FROM "sale_items" si
+            JOIN "sales" s ON s.id = si."saleId"
+            WHERE s."status" = 'COMPLETED'
+        `,
         prisma.product.findMany({
             select: { id: true, name: true, category: true },
         }),
@@ -92,22 +96,17 @@ const getDashboard = async (filters = {}) => {
 
     const toNumber = (value) => Number(value) || 0;
 
-    const todaySalesTotal = todaySales.reduce(
-        (sum, sale) => sum + toNumber(sale.total),
-        0
-    );
+    const todaySalesTotal = toNumber(todaySales._sum?.total);
+    const todaySalesCount = todaySales._count || 0;
 
-    const todayOrdersTotal = todayOrders.reduce(
-        (sum, order) => sum + toNumber(order.total),
-        0
-    );
+    const todayOrdersTotal = toNumber(todayOrders._sum?.total);
+    const todayOrdersCount = todayOrders._count || 0;
 
-    const grossSales = allSales.reduce((sum, sale) => sum + toNumber(sale.subtotal), 0);
-    const totalDiscounts = allSales.reduce((sum, sale) => sum + toNumber(sale.discount), 0);
-    const profit = allSales.reduce((sum, sale) => {
-        const itemCost = sale.items.reduce((s, item) => s + toNumber(item.unitPrice) * toNumber(item.quantity), 0);
-        return sum + toNumber(sale.total) - itemCost;
-    }, 0);
+    const grossSales = toNumber(allSalesAgg._sum?.subtotal);
+    const totalDiscounts = toNumber(allSalesAgg._sum?.discount);
+    const totalSalesRevenue = toNumber(allSalesAgg._sum?.total);
+    const totalCost = profitAgg[0] ? toNumber(profitAgg[0].totalCost) : 0;
+    const profit = totalSalesRevenue - totalCost;
 
     const stock = rawMaterials
         .map((material) => {
@@ -175,18 +174,18 @@ const getDashboard = async (filters = {}) => {
     return {
         summary: {
             todaySales: {
-                count: todaySales.length,
+                count: todaySalesCount,
                 total: todaySalesTotal,
             },
             totalSales: {
                 count: allSalesAgg._count || 0,
-                total: toNumber(allSalesAgg._sum?.total),
+                total: totalSalesRevenue,
             },
             grossSales: Math.round(grossSales * 100) / 100,
             discounts: Math.round(totalDiscounts * 100) / 100,
             profit: Math.round(profit * 100) / 100,
             todayOrders: {
-                count: todayOrders.length,
+                count: todayOrdersCount,
                 total: todayOrdersTotal,
             },
             totalOrders: {
