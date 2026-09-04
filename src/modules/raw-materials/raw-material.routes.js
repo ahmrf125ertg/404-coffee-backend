@@ -5,6 +5,7 @@ const { requirePermission } = require("../../middlewares/permission.middleware")
 
 const {
   getRawMaterials,
+  getRawMaterialById,
   createRawMaterial,
   updateRawMaterial,
   deleteRawMaterial,
@@ -37,6 +38,14 @@ router.post(
   authMiddleware,
   requirePermission("inventory", "create_material"),
   createRawMaterial
+);
+
+// Get raw material by ID
+router.get(
+  "/:id",
+  authMiddleware,
+  requirePermission("inventory", "view_inventory"),
+  getRawMaterialById
 );
 
 // Get batches for a material

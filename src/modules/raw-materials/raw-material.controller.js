@@ -37,6 +37,19 @@ const getRawMaterials = async (req, res, next) => {
     }
 };
 
+// Get raw material by ID
+const getRawMaterialById = async (req, res, next) => {
+    try {
+        const material = await rawMaterialService.getRawMaterialById(req.params.id);
+        if (!material) {
+            return res.status(404).json({ success: false, message: "Raw material not found" });
+        }
+        res.status(200).json({ success: true, data: material });
+    } catch (error) {
+        next(error);
+    }
+};
+
 // Create raw material
 const createRawMaterial = async (req, res, next) => {
     try {
@@ -146,6 +159,7 @@ const getRawMaterialsOptions = async (req, res, next) => {
 
 module.exports = {
     getRawMaterials,
+    getRawMaterialById,
     createRawMaterial,
     updateRawMaterial,
     deleteRawMaterial,

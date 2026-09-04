@@ -405,8 +405,28 @@ const getRawMaterialsOptions = async () => {
     return materials;
 };
 
+// ============================================================
+// Get raw material by ID
+// ============================================================
+
+const getRawMaterialById = async (id) => {
+    const material = await prisma.rawMaterial.findUnique({
+        where: { id: Number(id) },
+        include: {
+            batches: {
+                orderBy: [
+                    { expiryDate: "asc" },
+                    { createdAt: "asc" },
+                ],
+            },
+        },
+    });
+    return material;
+};
+
 module.exports = {
     getRawMaterials,
+    getRawMaterialById,
     createRawMaterial,
     updateRawMaterial,
     deleteRawMaterial,

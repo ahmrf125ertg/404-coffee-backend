@@ -938,7 +938,7 @@ const updateOrderStatus = async (id, data, userId) => {
 
         // COMPLETED: create sale + drawer transaction
         if (status === "COMPLETED" && existingOrder.status !== "COMPLETED") {
-            const { sale, drawerTransaction } = await createOrderCompletionSale(tx, order, userId || 1);
+            const { sale, drawerTransaction } = await createOrderCompletionSale(tx, order, userId);
             // Link sale to order
             await tx.order.update({
                 where: { id: orderId },
@@ -953,9 +953,11 @@ const updateOrderStatus = async (id, data, userId) => {
             };
         }
 
-        // CANCELLED: restore inventory
+        // CANCELLED: restore inventory only if it was deducted (order was at least PREPARING)
         if (status === "CANCELLED" && existingOrder.status !== "CANCELLED") {
-            inventoryEffect = await restoreInventoryForOrder(tx, orderId);
+            if (existingOrder.status === "PREPARING" || existingOrder.status === "READY") {
+                inventoryEffect = await restoreInventoryForOrder(tx, orderId);
+            }
         }
 
         return { order, inventoryEffect, financialEffect };
@@ -1143,7 +1145,7 @@ const closeTableOrder = async (tableNumber, userId) => {
                         type: "SALES",
                         amount: totalPaid,
                         description: `Table ${tableNumber} closed`,
-                        recordedByUserId: userId || 1,
+                        recordedByUserId: userId,
                     },
                 });
             }
@@ -1654,7 +1656,7 @@ const checkoutTable = async (tableNumber, data, userId) => {
                         type: "SALES",
                         amount: totalPaid - checkoutDiscount,
                         description: `Table ${tableNumber} checkout`,
-                        recordedByUserId: userId || 1,
+                        recordedByUserId: userId,
                     },
                 });
             }
@@ -1750,7 +1752,7 @@ const completeDelivery = async (orderId, data = {}, userId) => {
         // Create sale + drawer transaction (shared helper)
         // NOTE: Inventory was already deducted at PENDING→PREPARING transition.
         // Do NOT deduct again here.
-        const { sale, drawerTransaction } = await createOrderCompletionSale(tx, order, userId || 1);
+        const { sale, drawerTransaction } = await createOrderCompletionSale(tx, order, userId);
 
         // Link sale to order
         await tx.order.update({
