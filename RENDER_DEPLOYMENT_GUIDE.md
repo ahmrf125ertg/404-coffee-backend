@@ -3,40 +3,56 @@
 ## Prerequisites
 
 1. GitHub repo: `https://github.com/ahmrf125ertg/404-coffee-backend`
-2. Render account (free tier OK)
-3. PostgreSQL database (Render managed or external)
+2. Render account (free tier OK, no credit card required)
 
-## Step 1: Create PostgreSQL Database on Render
+## Option A: One-Click Deploy (render.yaml)
 
-1. Go to Render Dashboard → **New** → **PostgreSQL**
+The repo includes a `render.yaml` that provisions everything automatically:
+
+1. Go to [render.com/new](https://render.com/new)
+2. Select **Blueprint** → connect your GitHub repo
+3. Render detects `render.yaml` and provisions:
+   - Web Service (Node.js, free tier)
+   - PostgreSQL database (free tier, 30-day expiry)
+   - Environment variables (auto-generated JWT secrets)
+4. Click **Apply** → deployment starts (~2-3 min)
+
+After deploy, seed the database:
+1. Go to your Web Service → **Shell** tab
+2. Run: `node prisma/seed.js`
+
+## Option B: Manual Setup
+
+### Step 1: Create PostgreSQL Database
+
+1. Render Dashboard → **New** → **PostgreSQL**
 2. Name: `coffee-404-db`
-3. Plan: **Free** (or Starter for production)
-4. Region: closest to your users
-5. Note the **Internal Database URL** (format: `postgresql://user:pass@host:5432/dbname`)
+3. Plan: **Free** (256 MB RAM, expires after 30 days)
+4. Copy the **Internal Database URL**
 
-## Step 2: Create Web Service
+### Step 2: Create Web Service
 
-1. Go to Render Dashboard → **New** → **Web Service**
-2. Connect GitHub repo: `ahmrf125ertg/404-coffee-backend`
+1. Render Dashboard → **New** → **Web Service**
+2. Connect GitHub: `ahmrf125ertg/404-coffee-backend`
 3. Settings:
    - **Name:** `404-coffee-backend`
    - **Runtime:** Node
-   - **Build Command:** `npm install && npx prisma generate`
+   - **Build Command:** `npm install && npx prisma generate && npx prisma migrate deploy`
    - **Start Command:** `node src/server.js`
-   - **Plan:** Free (or Starter)
+   - **Plan:** Free
 
-## Step 3: Environment Variables
+### Step 3: Environment Variables
 
-Add these in the **Environment** tab:
+Add in the **Environment** tab:
 
 ```bash
-# Database (use Render's Internal Database URL for best performance)
+# Database (use Internal URL from Step 1)
 DATABASE_URL=postgresql://user:pass@host:5432/dbname
 
-# JWT — GENERATE STRONG RANDOM SECRETS!
-# Use: node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
-JWT_SECRET=<64-char-random-string>
-JWT_REFRESH_SECRET=<64-char-random-string>
+# JWT — Generate strong secrets:
+# node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+JWT_SECRET=<64-char-random-hex>
+JWT_REFRESH_SECRET=<64-char-random-hex>
 JWT_EXPIRES_IN=1h
 JWT_REFRESH_EXPIRES_IN=7d
 
@@ -44,67 +60,71 @@ JWT_REFRESH_EXPIRES_IN=7d
 PORT=5000
 NODE_ENV=production
 
-# CORS (your frontend URL)
+# CORS (your frontend URL, comma-separated for multiple)
 CORS_ORIGINS=https://your-frontend.onrender.com
 
-# AI (optional)
+# AI Chat (optional)
 DEEPSEEK_API_KEY=your-key-here
 DEEPSEEK_MODEL=deepseek-chat
-AI_RATE_LIMIT_WINDOW_MS=60000
-AI_RATE_LIMIT_MAX_REQUESTS=10
 ```
 
-## Step 4: Deploy
+### Step 4: Deploy & Seed
 
-1. Click **Create Web Service**
-2. Render will auto-deploy from `master` branch
-3. First deploy takes ~2-3 minutes
+1. Click **Create Web Service** → auto-deploys from `master`
+2. After deploy, go to **Shell** tab → run: `node prisma/seed.js`
 
-## Step 5: Run Migrations
-
-After first deploy, go to **Shell** tab in Render and run:
+## Step 5: Verify
 
 ```bash
-npx prisma migrate deploy
-npx prisma db seed
+# Health check
+curl https://404-coffee-backend.onrender.com/api/health
+# Expected: {"success":true,"message":"404 Coffee API is running"}
+
+# Login
+curl -X POST https://404-coffee-backend.onrender.com/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Admin","password":"root123"}'
+# Expected: {"success":true,"data":{"auth":{"access_token":"..."},...}}
 ```
 
-Or add to build command:
-```
-npm install && npx prisma generate && npx prisma migrate deploy
-```
+## Required Environment Variables
 
-## Step 6: Verify
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `DATABASE_URL` | Yes | — | PostgreSQL connection string |
+| `JWT_SECRET` | Yes | — | 64-char random hex for access tokens |
+| `JWT_REFRESH_SECRET` | Yes | — | 64-char random hex for refresh tokens |
+| `JWT_EXPIRES_IN` | No | `1h` | Access token expiry |
+| `JWT_REFRESH_EXPIRES_IN` | No | `7d` | Refresh token expiry |
+| `PORT` | No | `5000` | Server port (Render sets this automatically) |
+| `NODE_ENV` | No | `development` | Set to `production` |
+| `CORS_ORIGINS` | No | `*` | Comma-separated allowed origins |
+| `DEEPSEEK_API_KEY` | No | — | For AI chat feature |
+| `DEEPSEEK_MODEL` | No | `deepseek-chat` | AI model name |
 
-1. Open `https://404-coffee-backend.onrender.com/api/health`
-2. Should return: `{"status":"ok","timestamp":"...","uptime":...}`
+## Free Tier Limitations
 
-## Important Notes
+- **Spin-down:** Service sleeps after 15 min inactivity (~30s cold start)
+- **Database expiry:** Free PostgreSQL expires after 30 days (14-day grace period)
+- **Hours:** 750 free instance hours/month
+- **WebSocket:** Connections drop when service sleeps
 
-### CORS
-Update `CORS_ORIGINS` in `.env` with your frontend URL. Multiple origins: comma-separated.
+## Production Checklist
 
-### Database URL
-Use Render's **Internal Database URL** (not External) for better performance and no SSL issues.
-
-### Free Tier Limitations
-- Service spins down after 15 min inactivity
-- First request after spin-down takes ~30s
-- 750 hours/month free
-
-### Production Checklist
 - [ ] Generate strong JWT secrets (not defaults)
 - [ ] Set `NODE_ENV=production`
-- [ ] Configure CORS for your frontend domain
+- [ ] Configure `CORS_ORIGINS` for your frontend domain
 - [ ] Run `prisma migrate deploy` after schema changes
-- [ ] Seed default data: `npx prisma db seed`
+- [ ] Seed default data: `node prisma/seed.js`
 - [ ] Test health endpoint
-- [ ] Test login with seeded admin
+- [ ] Test login with Admin/root123
 
-### Backend URL
-After deployment, your API base URL will be:
+## Backend URL
+
+After deployment:
 ```
 https://404-coffee-backend.onrender.com
 ```
 
-Update your frontend to point to this URL.
+API base: `https://404-coffee-backend.onrender.com/api`
+Swagger docs: `https://404-coffee-backend.onrender.com/api/docs`
