@@ -64,7 +64,7 @@ DEEPSEEK_MODEL=deepseek-chat
 ## Step 4: Deploy
 
 1. Railway auto-deploys on every push to `master`
-2. The Dockerfile runs: `npm ci` → `prisma generate` → `prisma migrate deploy` → `node src/server.js`
+2. The Dockerfile runs: `npm ci --omit=dev` → `prisma generate` → `prisma migrate deploy` → `node src/server.js`
 3. First deploy takes ~2-3 minutes
 4. Check **Deployments** tab for build logs and status
 
