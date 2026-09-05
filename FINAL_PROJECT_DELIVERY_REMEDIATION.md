@@ -96,7 +96,7 @@
 
 | Status | Count | Notes |
 |--------|-------|-------|
-| ✅ Exist and work | ~120 | All core CRUD operations |
+| ✅ Exist and work | ~131 | All core CRUD operations (matched to Excel HTTP entries) |
 | ❌ Missing from code | 14 | Product categories (3), raw materials options (1), raw materials withdrawals (2), raw materials batch update/delete (2), product upload image (1), product configuration (2), user events (1), settings by key (1), raw materials return options (1) |
 | ⚠️ Exist but buggy (now fixed) | 10 | Table order inventory, delivery double-deduction, status bypass, etc. |
 | 🚫 Incompatible | 4 | `/api/inventory/movements`, `/api/financial-reports/sales`, `/api/financial-reports/profit`, `/api/financial-reports/treasury` — exist in Excel but marked incompatible |
@@ -239,7 +239,7 @@ Sale linkage:
 - Code quality improvements (dead code, duplicates — cosmetic)
 
 **The project is ready for delivery with the understanding that:**
-1. The core order/inventory lifecycle is correct and tested (33/33 tests pass)
+1. The core order/inventory lifecycle is correct and tested (61/61 tests pass)
 2. Security is hardened to acceptable levels
 3. Missing APIs are documented and can be implemented in a follow-up phase
 4. The frontend should be tested against the updated backend

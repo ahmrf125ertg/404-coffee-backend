@@ -242,7 +242,7 @@ All routes are protected by `authMiddleware` which guarantees `req.user.userId` 
 ### 8.1 Source
 
 - **Excel file:** `api_catalog_detailed.xlsx` (146 unique endpoints extracted via Python zipfile+XML parsing)
-- **Backend routes:** 157 routes extracted from 22 `*.routes.js` files + `app.js` direct routes
+- **Backend routes:** 158 routes extracted from 22 `*.routes.js` files + `app.js` direct routes
 
 ### 8.2 Summary
 
@@ -522,7 +522,7 @@ The sanitization regex does not cover `SQL`, `SELECT`, `INSERT`, `UPDATE`, `DELE
 7. **User tracking is accurate** — no silent fallbacks to Admin
 8. **Production error handling is in place** — internal details not leaked
 9. **No `.env` in git** — secrets are safe
-10. **100% test pass rate** — all 33 tests pass (9 "failures" are correct 401/400/404 responses)
+10. **100% test pass rate** — all 61 tests pass
 11. **`GET /api/raw-materials/:id` endpoint added** — was missing from Excel catalog
 12. **Startup warning for refresh secret fallback** — prevents silent security degradation
 

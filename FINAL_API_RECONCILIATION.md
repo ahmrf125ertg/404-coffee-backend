@@ -1,21 +1,22 @@
 # FINAL API RECONCILIATION — 404 Coffee Backend
 
-**Date:** 2026-09-04
-**Backend:** 153 endpoints | **Postman:** 74 endpoints | **Excel:** 92 endpoints
+**Date:** 2026-09-05 (corrected)
+**Backend:** 158 HTTP endpoints | **Postman:** 76 unique endpoints | **Excel:** 152 entries (146 HTTP + 3 WS + 3 INTERNAL)
 
 ---
 
 ## Reconciliation Status
 
-| Metric | Value |
-|--------|-------|
-| Backend total | 153 |
-| Postman total | 74 |
-| Excel total | 92 |
-| Postman coverage | 48% |
-| Excel coverage | 60% |
-| Extra backend (not in Postman) | 79 |
-| Extra backend (not in Excel) | 61 |
+| Metric | Value | Source |
+|--------|-------|--------|
+| Backend total (HTTP) | 158 | Counted from 22 route files + app.js |
+| Postman total (unique) | 76 | Deduplicated from 84 collection items |
+| Excel total (all entries) | 152 | Parsed from api_catalog_detailed.xlsx (146 HTTP + 3 WS + 3 INTERNAL) |
+| Postman coverage (of backend) | 48% | 76/158 |
+| Excel HTTP coverage (of backend) | 83% | 131 matched / 158 backend |
+| Extra backend (not in Postman) | 82 | 158 - 76 |
+| Extra backend (not in Excel HTTP) | 27 | Backend endpoints with no Excel counterpart |
+| Missing from backend (in Excel HTTP) | 15 | Excel HTTP entries with no backend implementation |
 
 ## Endpoint-by-Endpoint Reconciliation
 
@@ -263,13 +264,14 @@
 
 ## Summary
 
-| Category | Count |
-|----------|-------|
-| Backend endpoints | 153 |
-| In Postman | 74 (48%) |
-| In Excel | 92 (60%) |
-| Extra backend (not in Postman) | 79 |
-| Extra backend (not in Excel) | 61 |
-| Missing from backend (in Excel only) | 0 |
+| Category | Count | Notes |
+|----------|-------|-------|
+| Backend HTTP endpoints | 158 | Verified: 22 route files + 4 app.js routes |
+| In Postman (unique) | 76 (48%) | Deduplicated from 84 raw collection items |
+| In Excel (all entries) | 152 | 146 HTTP + 3 WebSocket + 3 INTERNAL |
+| Excel HTTP entries matched to backend | 131 (83%) | Of 146 HTTP entries, 131 have a backend implementation |
+| Extra backend (not in Postman) | 82 | Backend endpoints not covered by Postman |
+| Extra backend (not in Excel) | 27 | Backend endpoints absent from Excel catalog |
+| Missing from backend (in Excel) | 15 | Excel HTTP entries with no backend implementation |
 
-**All Excel-required endpoints are implemented in the backend.** The backend has 61 additional endpoints beyond the Excel spec — these are extra functionality not originally requested.
+**83% of Excel HTTP entries are implemented.** 15 Excel entries lack backend implementation (mostly optional: raw materials batch management, product configuration, image upload). The backend has 27 additional endpoints not in the Excel (purchases, reviews, settings, table-sessions, health, docs, etc.).

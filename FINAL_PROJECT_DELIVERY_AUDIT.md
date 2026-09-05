@@ -12,11 +12,11 @@
 | Metric | Value |
 |--------|-------|
 | **Overall Readiness** | 55% |
-| **Total Routes in Code** | 145 (140 module + 5 global) |
+| **Total Routes in Code** | 158 (154 module + 4 global) |
 | **Total APIs in Excel Catalog** | 152 |
-| **APIs Matching Catalog** | ~81 (Ready) |
-| **Missing APIs (in code but not in catalog)** | ~10 extra |
-| **Missing APIs (in catalog but not in code)** | ~14 critical missing |
+| **APIs Matching Catalog** | ~131 (Implemented) |
+| **Missing APIs (in code but not in catalog)** | ~27 extra |
+| **Missing APIs (in catalog but not in code)** | ~15 (mostly optional) |
 | **Broken/Buggy APIs** | 7 |
 | **Contract Mismatches** | 3 |
 | **Security Issues** | 6 Critical, 6 High, 8 Medium |
@@ -437,7 +437,7 @@ No frontend code is present in this repository. The contract is defined by:
 | CORS | ✅ | Configurable via env var |
 | Dependencies | ✅ | No known vulnerable packages |
 | Docker | ❌ | No Dockerfile or docker-compose |
-| Tests | ❌ | No test files found |
+| Tests | ✅ | 61/61 passing (node:test + supertest, PostgreSQL test DB) |
 
 ---
 

@@ -100,8 +100,8 @@ All endpoints authenticated (except health, public order tracking, reviews, logi
 | Metric | Value |
 |--------|-------|
 | Backend endpoints | 158 |
-| Postman endpoints | 74 (48% coverage) |
-| Excel endpoints | 92 |
+| Postman endpoints | 76 unique (84 raw items, 8 duplicates) |
+| Excel catalog entries | 152 (146 HTTP + 3 WS + 3 INTERNAL) |
 | All Excel-required endpoints implemented | ✅ YES |
 | Extra backend (not in Excel) | 66 |
 
@@ -133,7 +133,7 @@ All endpoints authenticated (except health, public order tracking, reviews, logi
 | Devices | 1 | 0 | 0 |
 | Table Sessions | 2 | 0 | 0 |
 | Health | 3 | 3 | 0 |
-| **TOTAL** | **158** | **74** | **92** |
+| **TOTAL** | **158** | **76 unique** | **152** |
 
 ## 6. Known Limitations
 
@@ -141,7 +141,7 @@ All endpoints authenticated (except health, public order tracking, reviews, logi
 |------|--------|
 | DeepSeek API requires valid key for chat | AI chat endpoint needs a working API key |
 | Dead WebSocket events (`dashboard:updated`, `inventory:updated`) | Defined but never emitted — no functional impact |
-| Postman coverage at 48% | 84 backend endpoints not covered by Postman — no functional impact |
+| Postman coverage at 48% (76/158 unique) | 82 backend endpoints not covered by Postman — no functional impact |
 | `prisma.config.ts` loaded via Prisma 7 driver adapter | Works but non-standard setup |
 | Node 24.x deprecation warnings in pg client | Warning only — no functional impact |
 
