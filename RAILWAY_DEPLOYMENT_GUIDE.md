@@ -29,83 +29,121 @@
 ## Step 2: Add PostgreSQL Database
 
 1. In your project dashboard → **New** → **Database** → **PostgreSQL**
-2. Railway provisions a PostgreSQL instance and injects `DATABASE_URL` into your service automatically
-3. No manual connection string copying needed — Railway wires it via environment variable
+2. Railway provisions a PostgreSQL instance with a service name (e.g. `coffee-404-db`)
+3. The PostgreSQL service automatically creates these variables: `DATABASE_URL`, `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, `PGDATABASE`
 
-## Step 3: Set Environment Variables
+## Step 3: Link DATABASE_URL to Your Backend Service (CRITICAL)
 
-Go to your service → **Variables** tab → add:
+This is the step that caused the previous deployment failure. The PostgreSQL service creates its own `DATABASE_URL`, but your backend service needs to **reference** it — do NOT copy/paste the value.
 
-```bash
-# JWT — Generate strong secrets:
-# node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
-JWT_SECRET=<64-char-random-hex>
-JWT_REFRESH_SECRET=<64-char-random-hex>
-JWT_EXPIRES_IN=1h
-JWT_REFRESH_EXPIRES_IN=7d
+### How to link variables between services:
 
-# Server (Railway injects PORT automatically, but set NODE_ENV)
-NODE_ENV=production
+1. Open your **backend service** (`404-coffee-backend`) in the project canvas
+2. Go to the **Variables** tab
+3. Add a new variable with this exact format:
 
-# CORS (your frontend URL, comma-separated for multiple)
-CORS_ORIGINS=https://your-frontend.up.railway.app
-
-# AI Chat (optional)
-DEEPSEEK_API_KEY=your-key-here
-DEEPSEEK_MODEL=deepseek-chat
+```
+DATABASE_URL=${{coffee-404-db.DATABASE_URL}}
 ```
 
-**Variables Railway injects automatically:**
-- `DATABASE_URL` — from the PostgreSQL plugin
-- `PORT` — set to the container's listen port (our server reads `process.env.PORT`)
+**Important:**
+- The service name (`coffee-404-db`) must match the **exact name** shown on your project canvas — case-sensitive
+- If your PostgreSQL service has a different name (like `Postgres` or `postgres`), use that instead: `${{Postgres.DATABASE_URL}}`
+- The `${{ }}` syntax is Railway's **variable reference** — it creates a live link, not a copy
+- The PostgreSQL plugin auto-injects `DATABASE_URL` into the database service; your backend references it
 
-**Do NOT set `PORT` manually** — Railway handles this.
+### Verify the variable is linked:
 
-## Step 4: Deploy
+1. In the backend service's **Variables** tab, you should see `DATABASE_URL` with a value that looks like a resolved PostgreSQL connection string (e.g. `postgresql://postgres:xxxxx@containers-us-west-xxx.railway.app:5432/railway`)
+2. If it shows `${{coffee-404-db.DATABASE_URL}}` literally (unresolved), the service name is wrong — check the exact name on the project canvas
 
-1. Railway auto-deploys on every push to `master`
-2. The Dockerfile runs: `npm ci --omit=dev` → `prisma generate` → `prisma migrate deploy` → `node src/server.js`
-3. First deploy takes ~2-3 minutes
-4. Check **Deployments** tab for build logs and status
+## Step 4: Set Other Environment Variables
 
-## Step 5: Seed Default Data
+Still in the backend service's **Variables** tab, add:
 
-After first successful deploy:
+```
+JWT_SECRET=<generate: node -e "console.log(require('crypto').randomBytes(64).toString('hex'))">
+JWT_REFRESH_SECRET=<generate a separate random hex>
+JWT_EXPIRES_IN=1h
+JWT_REFRESH_EXPIRES_IN=7d
+NODE_ENV=production
+CORS_ORIGINS=https://your-frontend.up.railway.app
+```
 
-1. Go to your service → **Settings** → **Networking** → **Generate Domain** (get your public URL)
-2. Run the seed command:
+**Do NOT set `PORT` manually** — Railway handles this automatically.
+
+**Do NOT set `DATABASE_URL` as a plain value** — use the reference syntax from Step 3.
+
+## Step 5: Trigger Redeploy
+
+After setting variables:
+1. Railway should auto-redeploy when variables change
+2. If not, go to the **Deployments** tab → click **Redeploy**
+3. Watch the build log — you should see:
+   - `npm ci --omit=dev` ✓
+   - `npx prisma generate` ✓
+   - `npx prisma migrate deploy` ✓ (at container start)
+   - `node src/server.js` ✓
+
+### If you see this error again:
+```
+PrismaConfigEnvError: Cannot resolve environment variable: DATABASE_URL
+```
+It means `DATABASE_URL` is still not available during the Docker build. This was a **code bug** (fixed in commit `a3297d2` and the upcoming fix) where `prisma.config.ts` tried to resolve `DATABASE_URL` at build time. After pulling the latest code with the fix, this error should not occur.
+
+## Step 6: Seed Default Data
+
+After the service is running (green status):
+
+### Option A: Use the Railway Shell (Recommended)
+
+1. Open your backend service → go to the **Settings** tab
+2. Scroll to **Deploy** section → find **Shell** or **Console** button
+3. In the shell, run:
    ```bash
-   # Via Railway CLI (if installed):
-   railway run node prisma/seed.js
-
-   # Or use the Railway shell:
-   # Go to Service → Settings → Deploy → invoke "node prisma/seed.js"
+   npx prisma migrate deploy
+   node prisma/seed.js
    ```
+4. You should see: `Seed user created: Admin (OWNER)` and `Default settings created`
 
-Or add a one-off deployment command in the Railway dashboard.
-
-## Step 6: Verify
+### Option B: Use Railway CLI
 
 ```bash
-# Health check
+# Install Railway CLI first
+npm install -g @railway/cli
+
+# Login
+railway login
+
+# Link to your project
+railway link
+
+# Run seed
+railway run node prisma/seed.js
+```
+
+## Step 7: Verify
+
+```bash
+# Health check (replace with your actual service URL from Railway dashboard)
 curl https://<your-service>.up.railway.app/api/health
 # Expected: {"success":true,"message":"404 Coffee API is running"}
 
-# Login
+# Login test
 curl -X POST https://<your-service>.up.railway.app/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"name":"Admin","password":"root123"}'
 # Expected: {"success":true,"data":{"auth":{"access_token":"..."},...}}
 
-# Swagger docs
-# Open in browser: https://<your-service>.up.railway.app/api/docs
+# Swagger docs (open in browser)
+# https://<your-service>.up.railway.app/api/docs
 ```
 
 ## Required Environment Variables
 
 | Variable | Required | Source | Description |
 |----------|----------|--------|-------------|
-| `DATABASE_URL` | Yes | Auto from PostgreSQL plugin | PostgreSQL connection string |
+| `DATABASE_URL` | Yes | **Reference** `${{coffee-404-db.DATABASE_URL}}` | PostgreSQL connection string |
 | `PORT` | Yes | Auto by Railway | Container port (do not set manually) |
 | `JWT_SECRET` | Yes | Manual | 64-char random hex for access tokens |
 | `JWT_REFRESH_SECRET` | Yes | Manual | 64-char random hex for refresh tokens |
@@ -115,6 +153,24 @@ curl -X POST https://<your-service>.up.railway.app/api/auth/login \
 | `CORS_ORIGINS` | No | Manual (default: `*`) | Comma-separated allowed origins |
 | `DEEPSEEK_API_KEY` | No | Manual | For AI chat feature |
 | `DEEPSEEK_MODEL` | No | Manual (default: `deepseek-chat`) | AI model name |
+
+## Troubleshooting
+
+### "Cannot resolve environment variable: DATABASE_URL" during build
+This was the original crash. It was caused by `prisma.config.ts` using Prisma's `env("DATABASE_URL")` helper which throws when the variable isn't available at Docker build time. Fixed in the latest commit by using `process.env.DATABASE_URL || ""` instead. Pull the latest `master` and redeploy.
+
+### Build succeeds but app crashes on start
+- Check that `DATABASE_URL` is linked (Step 3), not just set as a static value
+- Verify the PostgreSQL service is running (green status in the canvas)
+
+### "P1000: Authentication failed against database server"
+- The `DATABASE_URL` reference is resolving but the database isn't ready yet
+- Wait 30 seconds and redeploy — PostgreSQL takes time to initialize on first provision
+
+### Service name mismatch
+- The `${{SERVICE_NAME.DATABASE_URL}}` reference uses the **exact service name** from the project canvas
+- If you named the database "Postgres" (default), use `${{Postgres.DATABASE_URL}}`
+- If you renamed it to "coffee-404-db", use `${{coffee-404-db.DATABASE_URL}}`
 
 ## Railway-Specific Notes
 
@@ -145,6 +201,7 @@ A typical Express + PostgreSQL app on Railway:
 
 - [ ] Generate strong JWT secrets (not defaults)
 - [ ] Set `NODE_ENV=production`
+- [ ] Link `DATABASE_URL` using `${{coffee-404-db.DATABASE_URL}}` reference syntax
 - [ ] Configure `CORS_ORIGINS` for your frontend domain
 - [ ] Seed default data: `node prisma/seed.js`
 - [ ] Test health endpoint
