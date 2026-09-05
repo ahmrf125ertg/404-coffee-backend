@@ -217,7 +217,7 @@ describe("Dashboard / Reports / Warnings / Audit / Settings", () => {
   });
 });
 
-describe("Backup endpoint + Pagination", () => {
+describe("Health + Pagination", () => {
   let token;
 
   beforeEach(async () => {
@@ -226,16 +226,16 @@ describe("Backup endpoint + Pagination", () => {
     token = await loginToken("Admin");
   });
 
-  test("تحميل backup يعيد ملف SQLite صالح", async () => {
-    const res = await request(app)
-      .get("/api/backup/download")
-      .set(bearer(token));
+  test("health endpoints ترد صح", async () => {
+    const h1 = await request(app).get("/api/health");
+    assert.equal(h1.status, 200);
+    assert.equal(h1.body.success, true);
 
-    assert.equal(res.status, 200);
-    assert.equal(res.headers["content-type"], "application/octet-stream");
+    const h2 = await request(app).get("/api/health/live");
+    assert.equal(h2.status, 200);
 
-    const header = res.body.slice(0, 16).toString("latin1");
-    assert.equal(header, "SQLite format 3\u0000");
+    const h3 = await request(app).get("/api/health/ready");
+    assert.equal(h3.status, 200);
   });
 
   test("صفحات متتالية ما بتكررش البيانات", async () => {

@@ -26,9 +26,6 @@ describe("Sales (حسابات الفلوس + المخزون + الإلغاء)", 
     token = await loginToken("Admin");
 
     const material = await createMaterial();
-    await prisma.rawMaterialBatch.create({
-      data: { rawMaterialId: material.id, quantity: 50, pricePerUnit: 200 },
-    });
 
     const { product, size } = await createProductWithSize();
     pid = product.id;
@@ -315,7 +312,8 @@ describe("Orders", () => {
       .post("/api/orders")
       .set(bearer(token))
       .send({
-        orderType: "DINE_IN",
+        orderType: "tables",
+        table: "T1",
         paymentMethod: "CASH",
         items: [{ productId: pid, productSizeId: sizeId, quantity: 2 }],
       });
@@ -324,15 +322,21 @@ describe("Orders", () => {
     assert.equal(Number(created.body.data.total), 70);
 
     const updated = await request(app)
-      .put(`/api/orders/${id}`)
+      .patch(`/api/orders/${id}/status`)
       .set(bearer(token))
       .send({ status: "PREPARING" });
     assert.equal(updated.status, 200);
-    assert.equal(updated.body.data.status, "PREPARING");
+    assert.equal(updated.body.data.order.status, "PREPARING");
 
     const list = await request(app).get("/api/orders").set(bearer(token));
     assert.equal(list.status, 200);
     assert.equal(list.body.data.length, 1);
+
+    const cancel = await request(app)
+      .post(`/api/orders/${id}/cancel`)
+      .set(bearer(token))
+      .send({ reason: "Test cancel" });
+    assert.equal(cancel.status, 200);
 
     const del = await request(app).delete(`/api/orders/${id}`).set(bearer(token));
     assert.equal(del.status, 200);

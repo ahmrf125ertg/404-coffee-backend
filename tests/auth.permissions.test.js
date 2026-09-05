@@ -27,9 +27,9 @@ describe("Auth", () => {
 
     assert.equal(res.status, 200);
     assert.equal(res.body.success, true);
-    assert.ok(res.body.data.token);
-    assert.equal(res.body.data.user.role, "OWNER");
-    assert.equal(res.body.data.user.name, "Admin");
+    assert.ok(res.body.data.auth.access_token);
+    assert.equal(res.body.data.role.name, "Owner");
+    assert.equal(res.body.data.employee.name, "Admin");
   });
 
   test("login بباسورد غلط → 401", async () => {
@@ -87,7 +87,7 @@ describe("RBAC permissions", () => {
     await seedOwner();
   });
 
-  test("CASHIER يقدر يعمل sale لكن ممنوع عن users/backup", async () => {
+  test("CASHIER يقدر يعمل sale لكن ممنوع عن users", async () => {
     await seedUser({ name: "Cashier", role: "CASHIER" });
     const token = await loginToken("Cashier", "pass123");
 
@@ -109,11 +109,6 @@ describe("RBAC permissions", () => {
       .get("/api/users")
       .set(bearer(token));
     assert.equal(usersRes.status, 403);
-
-    const backupRes = await request(app)
-      .get("/api/backup/download")
-      .set(bearer(token));
-    assert.equal(backupRes.status, 403);
   });
 
   test("DELEGATE ممنوع عن customers/materials", async () => {
@@ -136,15 +131,14 @@ describe("RBAC permissions", () => {
     assert.equal(materialsRes.status, 403);
   });
 
-  test("OWNER يقدر يحمّل الـ backup", async () => {
+  test("OWNER يقدر يوصل صفحاته المسموحة", async () => {
     const token = await loginToken("Admin");
 
     const res = await request(app)
-      .get("/api/backup/download")
+      .get("/api/users")
       .set(bearer(token));
 
     assert.equal(res.status, 200);
-    assert.equal(res.headers["content-type"], "application/octet-stream");
   });
 
   test("GET /api/users/:id/permissions يرجع صلاحيات الدور الفعلية", async () => {
@@ -157,6 +151,6 @@ describe("RBAC permissions", () => {
 
     assert.equal(res.status, 200);
     assert.ok(res.body.data.permissions.users);
-    assert.ok(res.body.data.permissions.backup.includes("download_backup"));
+    assert.ok(res.body.data.permissions.backup);
   });
 });

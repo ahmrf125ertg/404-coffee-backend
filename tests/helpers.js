@@ -1,27 +1,21 @@
 /**
- * tests/helpers.js — إعداد بيئة الاختبار
- * =====================================
- * قاعدة بيانات SQLite منفصلة (prisma/test.db) — مش بنلمس dev.db.
- * ترتيب مهم: تحديد NODE_ENV و DATABASE_URL قبل استيراد الـ app عشان
- * الـ rate limiters يتعطلوا والـ logger يسكت.
+ * tests/helpers.js — Test environment setup
+ * ==========================================
+ * Uses a separate PostgreSQL database (coffee_404_test) to avoid
+ * touching the dev database.
  */
 
 const { execSync } = require("child_process");
 const path = require("path");
-const fs = require("fs");
+try { require("dotenv/config"); } catch (_) {}
 
-const TEST_DB_PATH = path.resolve(__dirname, "..", "prisma", "test.db");
-const TEST_DB_URL = `file:${TEST_DB_PATH}`;
+// Derive test DB URL from main DATABASE_URL by replacing the database name
+const TEST_DB_URL = process.env.TEST_DATABASE_URL || (process.env.DATABASE_URL || "").replace(/\/[^/]+$/, "/coffee_404_test");
 
 process.env.NODE_ENV = "test";
 process.env.DATABASE_URL = TEST_DB_URL;
 
-// بناء قاعدة اختبار نظيفة مرة واحدة لكل عملية اختبار
-for (const suffix of ["", "-wal", "-shm"]) {
-  fs.rmSync(TEST_DB_PATH + suffix, { force: true });
-}
-
-execSync("npx prisma migrate deploy", {
+execSync("./node_modules/.bin/prisma migrate deploy", {
   stdio: "ignore",
   env: { ...process.env, DATABASE_URL: TEST_DB_URL },
 });
@@ -31,6 +25,10 @@ const app = require("../src/app");
 const prisma = require("../src/lib/prisma");
 
 const TABLE_NAMES = [
+  "order_events",
+  "attendance",
+  "employee_devices",
+  "user_page_access",
   "cash_drawer_transactions",
   "cash_drawer_shifts",
   "audit_logs",
@@ -58,14 +56,11 @@ const TABLE_NAMES = [
 ];
 
 const resetDb = async () => {
-  await prisma.$executeRawUnsafe("PRAGMA foreign_keys = OFF;");
-
+  await prisma.$executeRawUnsafe(`SET session_replication_role = 'replica';`);
   for (const table of TABLE_NAMES) {
     await prisma.$executeRawUnsafe(`DELETE FROM "${table}";`);
   }
-
-  await prisma.$executeRawUnsafe("DELETE FROM sqlite_sequence;");
-  await prisma.$executeRawUnsafe("PRAGMA foreign_keys = ON;");
+  await prisma.$executeRawUnsafe(`SET session_replication_role = 'origin';`);
 };
 
 const seedOwner = async (overrides = {}) => {
@@ -103,12 +98,10 @@ const loginToken = async (name, password) => {
     .post("/api/auth/login")
     .send({ name, password: password || "root123" });
 
-  return res.body.data.token;
+  return res.body.data?.auth?.access_token || res.body.data?.token;
 };
 
 const bearer = (token) => ({ Authorization: `Bearer ${token}` });
-
-// ---- مُعدات بيانات مشتركة ----
 
 const createSupplier = async () =>
   prisma.supplier.create({
@@ -158,7 +151,6 @@ module.exports = {
   request,
   app,
   prisma,
-  TEST_DB_PATH,
   TEST_DB_URL,
   resetDb,
   seedOwner,
