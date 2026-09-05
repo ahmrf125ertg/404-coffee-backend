@@ -163,6 +163,6 @@ All endpoints authenticated (except health, public order tracking, reviews, logi
 ### Next Steps for Recipient
 1. Review this handover report
 2. Test with your own Postman collection
-3. Deploy to Render using `RENDER_DEPLOYMENT_GUIDE.md`
+3. Deploy to Railway using `RAILWAY_DEPLOYMENT_GUIDE.md` (or Render using `RENDER_DEPLOYMENT_GUIDE.md`)
 4. Set strong JWT secrets in production `.env`
 5. Run `prisma migrate deploy` on production database

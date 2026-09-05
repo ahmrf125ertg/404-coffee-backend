@@ -45,7 +45,8 @@ npm run dev                 # http://localhost:5000
 - [Curl Guide](docs/CURL_GUIDE.md)
 - [API Reconciliation](FINAL_API_RECONCILIATION.md)
 - [Handover Report](FINAL_HANDOVER_REPORT.md)
-- [Render Deployment Guide](RENDER_DEPLOYMENT_GUIDE.md)
+- [Railway Deployment Guide](RAILWAY_DEPLOYMENT_GUIDE.md) (primary)
+- [Render Deployment Guide](RENDER_DEPLOYMENT_GUIDE.md) (alternative)
 
 ## Project Structure
 
@@ -151,7 +152,9 @@ CORS_ORIGINS="http://localhost:3000,http://localhost:5173"
 
 ## Deployment
 
-See [RENDER_DEPLOYMENT_GUIDE.md](RENDER_DEPLOYMENT_GUIDE.md) for Render deployment instructions.
+**Primary:** [Railway](RAILWAY_DEPLOYMENT_GUIDE.md) — no sleep, WebSocket support, PostgreSQL included.
+
+**Alternative:** [Render](RENDER_DEPLOYMENT_GUIDE.md) — free tier, no credit card required (has 15-min spin-down).
 
 ## Delivery Reports
 
