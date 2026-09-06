@@ -31,7 +31,7 @@ const createServiceRequest = async (req, res, next) => {
             reason,
         });
 
-        await logAudit(req, "orders", "edit_order", `Service request created for table ${tableNumber}`);
+        await logAudit(req, "orders", "create_service_request", `Service request created for table ${tableNumber}`);
 
         emitServiceRequestCreated(request);
 
@@ -69,7 +69,7 @@ const resolveServiceRequest = async (req, res, next) => {
             req.user?.userId
         );
 
-        await logAudit(req, "orders", "edit_order", `Service request ${req.params.id} resolved`);
+        await logAudit(req, "orders", "resolve_service_request", `Service request ${req.params.id} resolved`);
 
         emitServiceRequestResolved(updated);
 
