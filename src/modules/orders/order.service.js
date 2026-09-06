@@ -1151,7 +1151,7 @@ const closeTableOrder = async (tableNumber, userId) => {
             }
         }
 
-        return { orders: updatedOrders, sale, drawerTransaction };
+        return { orders: updatedOrders, sale, drawerTransaction, checkout: { saleId: sale.id, paymentMethod: firstOrder.paymentMethod, total: totalPaid, discount: totalDiscount, drawerTransaction } };
     });
 
     return result;

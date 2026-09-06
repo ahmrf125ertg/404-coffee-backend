@@ -183,6 +183,7 @@ model Customer {
   loyaltyPoints Int      @default(0)
   loyaltyLevel  String   @default("REGULAR")
   notes         String?
+  isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   feedback      String?
@@ -652,4 +653,32 @@ enum DrawerTransactionType {
   MAINTENANCE
   PURCHASE
   INCENTIVE
+}
+
+enum ServiceRequestType {
+  WAITER
+  BILL
+  HELP
+}
+
+enum ServiceRequestStatus {
+  PENDING
+  RESOLVED
+  CANCELLED
+}
+
+model ServiceRequest {
+  id              Int                 @id @default(autoincrement())
+  tableNumber     Int
+  type            ServiceRequestType  @default(WAITER)
+  reason          String?
+  status          ServiceRequestStatus @default(PENDING)
+  resolvedByUserId Int?
+  resolvedAt      DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@index([tableNumber])
+  @@index([status])
+  @@map("service_requests")
 }

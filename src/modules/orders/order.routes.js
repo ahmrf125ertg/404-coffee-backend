@@ -63,7 +63,7 @@ router.patch(
 
 // Table details
 router.get(
-  "/tables/:tableNumber/details",
+  "/tables/:tableNumber",
   authMiddleware,
   requirePermission("orders", "view_orders"),
   orderController.getTableDetails

@@ -9,7 +9,7 @@ const getCustomers = async (reqQuery = {}) => {
     const { search } = reqQuery;
     const { skip, take } = parsePagination(reqQuery);
 
-    const where = {};
+    const where = { isActive: true };
 
     if (search && search.trim()) {
         where.OR = [
@@ -67,7 +67,30 @@ const getCustomerById = async (id) => {
         throw error;
     }
 
-    return customer;
+    const [statsResult, lastOrder] = await Promise.all([
+        prisma.order.aggregate({
+            where: {
+                customerId,
+                status: { not: "CANCELLED" },
+            },
+            _count: { id: true },
+            _sum: { total: true },
+        }),
+        prisma.order.findFirst({
+            where: { customerId },
+            orderBy: { createdAt: "desc" },
+            select: { createdAt: true },
+        }),
+    ]);
+
+    return {
+        ...customer,
+        stats: {
+            orders: statsResult._count.id,
+            totalSpent: statsResult._sum.total || 0,
+            lastOrderAt: lastOrder?.createdAt || null,
+        },
+    };
 };
 
 // ============================================================
@@ -320,9 +343,18 @@ const deleteCustomer = async (id) => {
         throw error;
     }
 
-    return prisma.customer.delete({
+    if (!existingCustomer.isActive) {
+        const error = new Error("Customer already deleted");
+        error.statusCode = 404;
+        throw error;
+    }
+
+    return prisma.customer.update({
         where: {
             id: customerId,
+        },
+        data: {
+            isActive: false,
         },
     });
 };

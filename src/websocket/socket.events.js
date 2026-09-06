@@ -3,6 +3,8 @@ const logger = require("../lib/logger");
 const ORDER_CREATED = "order:created";
 const ORDER_UPDATED = "order:updated";
 const ORDER_ITEM_UPDATED = "order:item:updated";
+const SERVICE_REQUEST_CREATED = "service-request:created";
+const SERVICE_REQUEST_RESOLVED = "service-request:resolved";
 
 const emitOrderCreated = (order) => {
   try {
@@ -49,6 +51,34 @@ const emitOrderItemUpdated = ({ orderId, itemId, status, orderStatus }) => {
   }
 };
 
+const emitServiceRequestCreated = (request) => {
+  try {
+    const io = require("./socket.server").getIO();
+    if (!io) return;
+
+    io.to("orders").emit(SERVICE_REQUEST_CREATED, {
+      event: SERVICE_REQUEST_CREATED,
+      request,
+    });
+  } catch (error) {
+    logger.error({ err: error }, "Failed to emit service-request:created");
+  }
+};
+
+const emitServiceRequestResolved = (request) => {
+  try {
+    const io = require("./socket.server").getIO();
+    if (!io) return;
+
+    io.to("orders").emit(SERVICE_REQUEST_RESOLVED, {
+      event: SERVICE_REQUEST_RESOLVED,
+      request,
+    });
+  } catch (error) {
+    logger.error({ err: error }, "Failed to emit service-request:resolved");
+  }
+};
+
 const DASHBOARD_UPDATED = "dashboard:updated";
 const INVENTORY_UPDATED = "inventory:updated";
 
@@ -72,11 +102,13 @@ module.exports = {
   ORDER_CREATED,
   ORDER_UPDATED,
   ORDER_ITEM_UPDATED,
-  DASHBOARD_UPDATED,
-  INVENTORY_UPDATED,
+  SERVICE_REQUEST_CREATED,
+  SERVICE_REQUEST_RESOLVED,
   emitOrderCreated,
   emitOrderUpdated,
   emitOrderItemUpdated,
+  emitServiceRequestCreated,
+  emitServiceRequestResolved,
   emitDashboardUpdated,
   emitInventoryUpdated,
 };
