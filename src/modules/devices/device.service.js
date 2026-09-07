@@ -92,6 +92,20 @@ const revokeDevice = async (userId, deviceId) => {
     });
 };
 
+// Block an approved device
+const blockDevice = async (userId, deviceId) => {
+    const device = await prisma.employeeDevice.findFirst({
+        where: { id: Number(deviceId), userId: Number(userId) },
+    });
+
+    if (!device) throw httpError("Device not found", 404);
+
+    return prisma.employeeDevice.update({
+        where: { id: device.id },
+        data: { status: "BLOCKED" },
+    });
+};
+
 // Check if a device is approved (used in login flow)
 const checkDeviceStatus = async (deviceFingerprint) => {
     if (!deviceFingerprint) return { status: "NOT_FOUND", deviceReviewRequired: false };
@@ -110,5 +124,6 @@ module.exports = {
     approveDevice,
     rejectDevice,
     revokeDevice,
+    blockDevice,
     checkDeviceStatus,
 };

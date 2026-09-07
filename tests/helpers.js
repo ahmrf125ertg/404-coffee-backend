@@ -98,7 +98,7 @@ const loginToken = async (name, password) => {
     .post("/api/auth/login")
     .send({ name, password: password || "root123" });
 
-  return res.body.data?.auth?.access_token || res.body.data?.token;
+  return res.body.data?.auth?.access_token || res.body.data?.token || res.body.data?.access_token;
 };
 
 const bearer = (token) => ({ Authorization: `Bearer ${token}` });

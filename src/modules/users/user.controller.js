@@ -22,12 +22,21 @@ const USER_SELECT = {
   position: true,
   role: true,
   status: true,
-  jobTitle: true,
   workStartTime: true,
   workEndTime: true,
   createdAt: true,
   updatedAt: true,
 };
+
+const mapUser = (u) => ({
+  id: u.id,
+  name: u.name,
+  position: u.position,
+  workStart: u.workStartTime || null,
+  workEnd: u.workEndTime || null,
+  status: u.status,
+  role: typeof u.role === "object" ? u.role : { name: u.role },
+});
 
 const getOwnerCount = () =>
   prisma.user.count({ where: { role: "OWNER" } });
@@ -61,7 +70,7 @@ const getUsers = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      data: users,
+      data: users.map(mapUser),
       pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) },
     });
   } catch (error) {
@@ -74,10 +83,16 @@ const getUsers = async (req, res, next) => {
 // =========================================================
 const createUser = async (req, res, next) => {
   try {
-    const { name, password, position, role = "CASHIER", jobTitle, workStartTime, workEndTime } = req.body;
+    const { name, password, position, role = "CASHIER", workStart, workEnd } = req.body;
 
     if (!name || !password || !position) {
       const error = new Error("Name, password and position are required");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (password.length < 6) {
+      const error = new Error("Password must be at least 6 characters");
       error.statusCode = 400;
       throw error;
     }
@@ -110,9 +125,8 @@ const createUser = async (req, res, next) => {
         passwordHash,
         position,
         role,
-        ...(jobTitle !== undefined && { jobTitle }),
-        ...(workStartTime !== undefined && { workStartTime }),
-        ...(workEndTime !== undefined && { workEndTime }),
+        ...(workStart !== undefined && { workStartTime: workStart }),
+        ...(workEnd !== undefined && { workEndTime: workEnd }),
       },
       select: USER_SELECT,
     });
@@ -122,7 +136,10 @@ const createUser = async (req, res, next) => {
     res.status(201).json({
       success: true,
       message: "User created successfully",
-      data: user,
+      data: {
+        ...mapUser(user),
+        createdAt: user.createdAt.toISOString(),
+      },
     });
   } catch (error) {
     next(error);
@@ -135,7 +152,7 @@ const createUser = async (req, res, next) => {
 const updateUser = async (req, res, next) => {
   try {
     const userId = Number(req.params.id);
-    const { name, password, position, role, jobTitle, workStartTime, workEndTime } = req.body;
+    const { name, password, position, role, workStart, workEnd } = req.body;
 
     if (!Number.isInteger(userId) || userId <= 0) {
       const error = new Error("Invalid user ID");
@@ -188,18 +205,15 @@ const updateUser = async (req, res, next) => {
         throw error;
       }
 
-      // ممنوع تغيير دورك بنفسك
       if (req.user.userId === userId) {
         const error = new Error("You cannot change your own role");
         error.statusCode = 400;
         throw error;
       }
 
-      // تغيير دور Owner (حتى من Owner) محتاج صلاحية OWNER
       if (existingUser.role === "OWNER" || role === "OWNER") {
         requireOwnerOr(req, res, next);
 
-        // مينفعش النسخ الإداري آخر Owner
         if (existingUser.role === "OWNER" && (await getOwnerCount()) <= 1) {
           const error = new Error("Cannot demote the last Owner");
           error.statusCode = 400;
@@ -210,9 +224,8 @@ const updateUser = async (req, res, next) => {
       updateData.role = role;
     }
 
-    if (jobTitle !== undefined) updateData.jobTitle = jobTitle || null;
-    if (workStartTime !== undefined) updateData.workStartTime = workStartTime || null;
-    if (workEndTime !== undefined) updateData.workEndTime = workEndTime || null;
+    if (workStart !== undefined) updateData.workStartTime = workStart || null;
+    if (workEnd !== undefined) updateData.workEndTime = workEnd || null;
 
     const user = await prisma.user.update({
       where: { id: userId },
@@ -225,7 +238,10 @@ const updateUser = async (req, res, next) => {
     res.status(200).json({
       success: true,
       message: "User updated successfully",
-      data: user,
+      data: {
+        ...mapUser(user),
+        updatedAt: user.updatedAt.toISOString(),
+      },
     });
   } catch (error) {
     next(error);
@@ -297,7 +313,7 @@ const updateUserStatus = async (req, res, next) => {
 };
 
 // =========================================================
-// GET USER EFFECTIVE PERMISSIONS (من الـ RBAC config)
+// GET USER EFFECTIVE PERMISSIONS
 // =========================================================
 const getUserPermissions = async (req, res, next) => {
   try {
@@ -323,7 +339,7 @@ const getUserPermissions = async (req, res, next) => {
     res.status(200).json({
       success: true,
       data: {
-        user,
+        user: mapUser(user),
         permissions: getExpandedPermissions(user.role),
       },
     });
@@ -400,41 +416,58 @@ const getUserById = async (req, res, next) => {
     const user = await prisma.user.findUnique({ where: { id: userId }, select: USER_SELECT });
     if (!user) { const error = new Error("User not found"); error.statusCode = 404; throw error; }
 
-    // Fetch related data
-    const [devices, attendanceRecords, pageAccessRecord] = await Promise.all([
-      prisma.employeeDevice.findMany({ where: { userId }, orderBy: { createdAt: "desc" } }),
-      prisma.attendance.findMany({ where: { userId }, select: { status: true, checkInAt: true, checkOutAt: true } }),
+    const [attendanceRecords, pageAccessRecord, auditLogs] = await Promise.all([
+      prisma.attendance.findMany({
+        where: { userId },
+        select: {
+          id: true,
+          checkInAt: true,
+          checkOutAt: true,
+          lateMinutes: true,
+          status: true,
+        },
+        orderBy: { checkInAt: "desc" },
+      }),
       prisma.userPageAccess.findUnique({ where: { userId } }),
+      prisma.auditLog.findMany({
+        where: { userId },
+        select: {
+          id: true,
+          page: true,
+          action: true,
+          description: true,
+          ipAddress: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: "desc" },
+        take: 50,
+      }),
     ]);
 
-    // Compute attendance summary
-    const totalDays = attendanceRecords.length;
-    const onTimeCount = attendanceRecords.filter((r) => r.status === "ON_TIME").length;
-    const lateCount = attendanceRecords.filter((r) => r.status === "LATE").length;
-    const totalWorkedMinutes = attendanceRecords.reduce((sum, r) => {
-      if (r.checkOutAt) {
-        return sum + Math.round((new Date(r.checkOutAt).getTime() - new Date(r.checkInAt).getTime()) / (1000 * 60));
-      }
-      return sum;
-    }, 0);
+    const mappedAttendance = attendanceRecords.map((r) => ({
+      id: r.id,
+      checkInAt: r.checkInAt ? r.checkInAt.toISOString() : null,
+      checkOutAt: r.checkOutAt ? r.checkOutAt.toISOString() : null,
+      lateMinutes: r.lateMinutes,
+      status: r.status,
+    }));
+
+    const mappedAuditLogs = auditLogs.map((l) => ({
+      id: l.id,
+      page: l.page,
+      action: l.action,
+      description: l.description,
+      ipAddress: l.ipAddress,
+      createdAt: l.createdAt.toISOString(),
+    }));
 
     res.status(200).json({
       success: true,
       data: {
-        ...user,
-        workSchedule: {
-          jobTitle: user.jobTitle || null,
-          workStartTime: user.workStartTime || null,
-          workEndTime: user.workEndTime || null,
-        },
-        devices,
-        pageAccess: pageAccessRecord ? pageAccessRecord.pages : null,
-        attendanceSummary: {
-          totalDays,
-          onTimeCount,
-          lateCount,
-          totalWorkedHours: Math.round(totalWorkedMinutes / 60 * 10) / 10,
-        },
+        ...mapUser(user),
+        pageAccess: pageAccessRecord ? pageAccessRecord.pages : [],
+        attendanceRecords: mappedAttendance,
+        auditLogs: mappedAuditLogs,
       },
     });
   } catch (error) { next(error); }

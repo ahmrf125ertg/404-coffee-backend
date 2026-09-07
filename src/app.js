@@ -17,6 +17,7 @@ const errorHandler = require("./middlewares/error.middleware");
 const authRoutes = require("./modules/auth/auth.routes");
 const auditLogRoutes = require("./modules/audit-logs/audit-log.routes");
 const deviceRoutes = require("./modules/devices/device.routes");
+const { employeeDeviceRouter } = require("./modules/devices/device.routes");
 const attendanceRoutes = require("./modules/attendance/attendance.routes");
 
 const cashDrawerShiftRoutes = require("./modules/cash-drawer-shifts/cash-drawer-shift.routes");
@@ -150,6 +151,7 @@ app.use("/api/suppliers", supplierRoutes);
 app.use("/api/table-sessions", tableSessionRoutes);
 app.use("/api/admin", tableSessionAdminRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/employees/:id/devices", employeeDeviceRouter);
 app.use("/api/warnings", warningRoutes);
 
 // ============================================================

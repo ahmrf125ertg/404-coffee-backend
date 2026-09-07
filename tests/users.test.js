@@ -41,7 +41,7 @@ describe("Users CRUD (RBAC + حماية الـ Owner)", () => {
       .send(createUserPayload());
 
     assert.equal(res.status, 201);
-    assert.equal(res.body.data.role, "CASHIER");
+    assert.equal(res.body.data.role.name, "CASHIER");
   });
 
   test("دور غير صالح → 400", async () => {
@@ -91,7 +91,7 @@ describe("Users CRUD (RBAC + حماية الـ Owner)", () => {
 
     assert.equal(res.status, 200);
     assert.equal(res.body.data.name, "Sara Updated");
-    assert.equal(res.body.data.role, "MANAGER");
+    assert.equal(res.body.data.role.name, "MANAGER");
   });
 
   test("ممنوع تغيير دورك لنفسك → 400", async () => {

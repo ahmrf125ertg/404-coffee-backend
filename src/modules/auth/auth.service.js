@@ -355,7 +355,7 @@ const buildRole = (role) => ({
 // Login
 // ============================================================
 
-const loginUser = async ({ name, username, password, deviceFingerprint }) => {
+const loginUser = async ({ name, username, password, device }) => {
   const resolvedName = name || username;
   if (!resolvedName || !password) {
     const error = new Error("Name and password are required");
@@ -368,7 +368,7 @@ const loginUser = async ({ name, username, password, deviceFingerprint }) => {
   });
 
   if (!user) {
-    const error = new Error("Invalid credentials");
+    const error = new Error("اسم المستخدم أو كلمة المرور غير صحيحة");
     error.statusCode = 401;
     throw error;
   }
@@ -382,81 +382,127 @@ const loginUser = async ({ name, username, password, deviceFingerprint }) => {
   const passwordMatch = await bcrypt.compare(password, user.passwordHash);
 
   if (!passwordMatch) {
-    const error = new Error("Invalid credentials");
+    const error = new Error("اسم المستخدم أو كلمة المرور غير صحيحة");
     error.statusCode = 401;
     throw error;
   }
 
-  // Device fingerprint check
-  let deviceReviewRequired = false;
-  if (deviceFingerprint) {
-    const device = await prisma.employeeDevice.findUnique({
-      where: { deviceFingerprint },
+  const isAdminOrManager = user.role === "OWNER" || user.role === "MANAGER";
+
+  if (device && device.fingerprint) {
+    const existingDevice = await prisma.employeeDevice.findUnique({
+      where: { deviceFingerprint: device.fingerprint },
     });
-    if (!device) {
-      deviceReviewRequired = true;
-    } else if (device.status === "PENDING") {
-      deviceReviewRequired = true;
-    } else if (device.status === "REVOKED" || device.status === "REJECTED") {
-      const error = new Error("This device has been revoked or rejected");
-      error.statusCode = 403;
-      throw error;
+
+    if (isAdminOrManager) {
+      if (!existingDevice) {
+        await prisma.employeeDevice.create({
+          data: {
+            userId: user.id,
+            name: device.name || "Unknown Device",
+            deviceFingerprint: device.fingerprint,
+            deviceInfo: { userAgent: device.userAgent } || null,
+            status: "APPROVED",
+            approvedAt: new Date(),
+          },
+        });
+      } else if (existingDevice.userId !== user.id) {
+        await prisma.employeeDevice.update({
+          where: { deviceFingerprint: device.fingerprint },
+          data: { userId: user.id, status: "APPROVED", approvedAt: new Date() },
+        });
+      } else if (existingDevice.status !== "APPROVED") {
+        await prisma.employeeDevice.update({
+          where: { deviceFingerprint: device.fingerprint },
+          data: { status: "APPROVED", approvedAt: new Date() },
+        });
+      }
+    } else {
+      if (!existingDevice) {
+        const newDevice = await prisma.employeeDevice.create({
+          data: {
+            userId: user.id,
+            name: device.name || "Unknown Device",
+            deviceFingerprint: device.fingerprint,
+            deviceInfo: { userAgent: device.userAgent } || null,
+            status: "PENDING",
+          },
+        });
+
+        return {
+          pendingDeviceApproval: true,
+          device: {
+            id: newDevice.id,
+            name: newDevice.name,
+            status: newDevice.status,
+            createdAt: newDevice.createdAt.toISOString(),
+          },
+        };
+      }
+
+      if (existingDevice.status === "PENDING") {
+        return {
+          pendingDeviceApproval: true,
+          device: {
+            id: existingDevice.id,
+            name: existingDevice.name,
+            status: existingDevice.status,
+            createdAt: existingDevice.createdAt.toISOString(),
+          },
+        };
+      }
+
+      if (existingDevice.status === "REJECTED" || existingDevice.status === "BLOCKED" || existingDevice.status === "REVOKED") {
+        const error = new Error("هذا الجهاز غير مصرح له بتسجيل الدخول");
+        error.statusCode = 403;
+        error.code = "DEVICE_BLOCKED";
+        throw error;
+      }
     }
   }
 
   const token = jwt.sign(
-    {
-      userId: user.id,
-      role: user.role,
-    },
+    { userId: user.id, role: user.role },
     jwtSecret,
-    {
-      expiresIn: jwtExpiresIn,
-    }
+    { expiresIn: jwtExpiresIn }
   );
 
-  const refreshToken = jwt.sign(
+  const refreshTokenValue = jwt.sign(
     { userId: user.id, type: "refresh" },
     jwtRefreshSecret,
     { expiresIn: jwtRefreshExpiresIn }
   );
 
-  const employee = buildEmployee(user);
   const role = buildRole(user.role);
   const permissions = buildPermissions(user.role);
-
   const expiresInSeconds = parseExpiresIn(jwtExpiresIn);
+  const refreshExpiresInSeconds = parseExpiresIn(jwtRefreshExpiresIn);
 
   return {
-    auth: {
-      access_token: token,
-      refresh_token: refreshToken,
-      expires_in: expiresInSeconds,
-      token_type: "Bearer",
+    employee: {
+      id: user.id,
+      name: user.name,
+      username: user.name,
+      image: null,
     },
-    employee,
     role,
     permissions,
     notifications: [],
-    preferences: {
-      language: "ar",
-      direction: "rtl",
-      theme: "light",
-      timezone: "Africa/Cairo",
+    shift: null,
+    auth: {
+      access_token: token,
+      refresh_token: refreshTokenValue,
+      token_type: "Bearer",
+      expires_in: expiresInSeconds,
+      refresh_expires_in: refreshExpiresInSeconds,
     },
-    session: {
-      login_time: new Date().toISOString(),
-      device: "Chrome",
-      ip_address: "127.0.0.1",
-    },
-    deviceReviewRequired,
   };
 };
 
 const getMe = async (userId) => {
     const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: { id: true, name: true, position: true, role: true, status: true, createdAt: true },
+        select: { id: true, name: true, role: true, status: true },
     });
     if (!user) {
         const error = new Error("User not found");
@@ -464,20 +510,33 @@ const getMe = async (userId) => {
         throw error;
     }
 
-    const pageAccessRecord = await prisma.userPageAccess.findUnique({
+    if (user.status !== "ACTIVE") {
+        const error = new Error("User account is suspended");
+        error.statusCode = 403;
+        throw error;
+    }
+
+    const device = await prisma.employeeDevice.findFirst({
         where: { userId },
-        select: { pages: true },
+        orderBy: { createdAt: "desc" },
+        select: { id: true, status: true },
     });
 
+    const role = buildRole(user.role);
+    const permissions = buildPermissions(user.role);
+
     return {
-        user,
-        permissions: buildPermissions(user.role),
-        pageAccess: pageAccessRecord ? pageAccessRecord.pages : [],
-        session: {
-            login_time: new Date().toISOString(),
-            device: "Chrome",
-            ip_address: "127.0.0.1",
+        employee: {
+            id: user.id,
+            name: user.name,
+            username: user.name,
+            image: null,
         },
+        role,
+        permissions,
+        notifications: [],
+        shift: null,
+        device: device ? { id: device.id, status: device.status } : null,
     };
 };
 
@@ -496,30 +555,53 @@ const refreshToken = async (refreshTokenValue) => {
         }
         const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
         if (!user || user.status !== "ACTIVE") {
-            const error = new Error("User not found or suspended");
+            const error = new Error("انتهت الجلسة، يرجى تسجيل الدخول مرة أخرى");
             error.statusCode = 401;
+            error.code = "SESSION_EXPIRED";
             throw error;
         }
         const access_token = jwt.sign({ userId: user.id, role: user.role }, jwtSecret, { expiresIn: jwtExpiresIn });
         const new_refresh_token = jwt.sign({ userId: user.id, type: "refresh" }, jwtRefreshSecret, { expiresIn: jwtRefreshExpiresIn });
         const expiresInSeconds = parseExpiresIn(jwtExpiresIn);
-        return { access_token, refresh_token: new_refresh_token, expires_in: expiresInSeconds };
+        const refreshExpiresInSeconds = parseExpiresIn(jwtRefreshExpiresIn);
+        return {
+            access_token,
+            refresh_token: new_refresh_token,
+            token_type: "Bearer",
+            expires_in: expiresInSeconds,
+            refresh_expires_in: refreshExpiresInSeconds,
+        };
     } catch (error) {
         if (error.name === "TokenExpiredError" || error.name === "JsonWebTokenError") {
-            const e = new Error("Invalid or expired refresh token");
+            const e = new Error("انتهت الجلسة، يرجى تسجيل الدخول مرة أخرى");
             e.statusCode = 401;
+            e.code = "SESSION_EXPIRED";
             throw e;
         }
         throw error;
     }
 };
 
-const logoutUser = async (userId, allDevices) => {
-    if (allDevices) {
-        await prisma.employeeDevice.deleteMany({
-            where: { userId },
-        });
+const logoutUser = async (userId, refreshTokenValue) => {
+    if (refreshTokenValue) {
+        try {
+            const decoded = jwt.verify(refreshTokenValue, jwtRefreshSecret, { algorithms: ["HS256"] });
+            if (decoded.userId === userId) {
+                await prisma.employeeDevice.deleteMany({
+                    where: { userId },
+                });
+            }
+        } catch (_) {
+            // Token already invalid, still allow logout
+        }
     }
+    return { loggedOut: true };
+};
+
+const logoutAllDevices = async (userId) => {
+    await prisma.employeeDevice.deleteMany({
+        where: { userId },
+    });
     return { loggedOut: true };
 };
 
@@ -528,4 +610,5 @@ module.exports = {
   getMe,
   refreshToken,
   logoutUser,
+  logoutAllDevices,
 };
