@@ -13,4 +13,4 @@ COPY . .
 
 EXPOSE 5000
 
-CMD ["sh", "-c", "echo \"DATABASE_URL set: $([ -n \"$DATABASE_URL\" ] && echo 'yes' || echo 'no')\" && npx prisma migrate deploy && echo 'Migration done' || echo 'Migration failed' && node src/server.js"]
+CMD ["sh", "-c", "echo 'Running migrations...' && npx prisma migrate deploy 2>&1; echo 'Starting server...' && node src/server.js"]
