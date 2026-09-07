@@ -518,6 +518,9 @@ model ProductCategory {
 model Attendance {
   id                Int       @id @default(autoincrement())
   userId            Int
+  attendanceDate    String
+  scheduledStart    String?
+  scheduledEnd      String?
   checkInAt         DateTime
   checkOutAt        DateTime?
   status            String    @default("ON_TIME")
@@ -528,6 +531,7 @@ model Attendance {
   deviceFingerprint String?
   user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@unique([userId, attendanceDate])
   @@index([userId])
   @@index([checkInAt])
   @@map("attendance")

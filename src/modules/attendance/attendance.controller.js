@@ -5,10 +5,11 @@ const { logAudit } = require("../../utils/audit");
 const checkIn = async (req, res, next) => {
     try {
         const userId = req.user.userId;
-        const { deviceFingerprint } = req.body;
+        const { deviceFingerprint } = req.body || {};
         const result = await attendanceService.checkIn(userId, { deviceFingerprint });
         await logAudit(req, "attendance", "check_in", `User #${userId} checked in at ${result.checkedInAt} [${result.status}]`);
-        res.status(201).json({ success: true, message: "Check-in successful", data: result });
+        const statusCode = result.idempotent ? 200 : 201;
+        res.status(statusCode).json({ success: true, message: result.idempotent ? "Already checked in today" : "Check-in successful", data: result });
     } catch (error) { next(error); }
 };
 

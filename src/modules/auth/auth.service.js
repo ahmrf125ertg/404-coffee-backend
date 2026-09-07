@@ -1,13 +1,17 @@
 const bcrypt = require("bcryptjs");
+const crypto = require("crypto");
 
 const jwt = require("jsonwebtoken");
 
 const prisma = require("../../lib/prisma");
+const { checkInToday } = require("../attendance/attendance.service");
 
 const { jwtSecret, jwtRefreshSecret, jwtExpiresIn, jwtRefreshExpiresIn } = require("../../config/env");
 
-// Phase 2 will populate sessionId and deviceId from auth_sessions table.
-// For now they are null — login still works, tokens just don't carry session data yet.
+// ============================================================
+// Phase 2: Token signing + refresh token hashing
+// ============================================================
+
 const signAccessToken = (user, { sessionId = null, deviceId = null } = {}) =>
   jwt.sign(
     {
@@ -33,6 +37,9 @@ const signRefreshToken = (user, { sessionId = null, deviceId = null } = {}) =>
     jwtRefreshSecret,
     { expiresIn: jwtRefreshExpiresIn }
   );
+
+const hashToken = (token) =>
+  crypto.createHash("sha256").update(token).digest("hex");
 
 const { getExpandedPermissions, PAGES } = require("../../config/roles.config");
 
@@ -489,9 +496,51 @@ const loginUser = async ({ name, username, password, device }) => {
     }
   }
 
-  // Phase 1: New payload shape. sessionId/deviceId populated by Phase 2.
-  const token = signAccessToken(user);
-  const refreshTokenValue = signRefreshToken(user);
+  // ============================================================
+  // Phase 2: Session creation + attendance in a single transaction
+  // ============================================================
+
+  const sessionId = crypto.randomUUID();
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + parseExpiresIn(jwtRefreshExpiresIn) * 1000);
+
+  // Resolve deviceId from approved device (if any)
+  let resolvedDeviceId = null;
+  if (device && device.fingerprint) {
+    const approvedDevice = await prisma.employeeDevice.findUnique({
+      where: { deviceFingerprint: device.fingerprint },
+      select: { id: true },
+    });
+    if (approvedDevice) resolvedDeviceId = approvedDevice.id;
+  }
+
+  // Sign tokens with real sessionId and deviceId
+  const token = signAccessToken(user, { sessionId, deviceId: resolvedDeviceId });
+  const refreshTokenValue = signRefreshToken(user, { sessionId, deviceId: resolvedDeviceId });
+  const refreshTokenHashed = hashToken(refreshTokenValue);
+
+  // Execute session + attendance in a single transaction
+  const { attendance } = await prisma.$transaction(async (tx) => {
+    // 1. Create AuthSession
+    await tx.authSession.create({
+      data: {
+        id: sessionId,
+        employeeId: user.id,
+        deviceId: resolvedDeviceId,
+        refreshTokenHash: refreshTokenHashed,
+        expiresAt,
+        revokedAt: null,
+      },
+    });
+
+    // 2. Auto attendance check-in (idempotent via shared logic)
+    const result = await checkInToday(user.id, {
+      deviceFingerprint: device?.fingerprint || null,
+      tx,
+    });
+
+    return result;
+  });
 
   const role = buildRole(user.role);
   const permissions = buildPermissions(user.role);

@@ -1,5 +1,8 @@
 const prisma = require("../../lib/prisma");
 const { parsePagination } = require("../../utils/pagination");
+const { formatInTimeZone } = require("date-fns-tz");
+
+const CAIRO_TZ = "Africa/Cairo";
 
 const httpError = (message, statusCode = 400) => {
     const error = new Error(message);
@@ -7,72 +10,70 @@ const httpError = (message, statusCode = 400) => {
     return error;
 };
 
-// Compute ON_TIME/LATE based on user's workStartTime
-// Parses time directly from ISO string to avoid timezone conversion issues
-const computeAttendanceStatus = (checkInAt, workStartTime) => {
-    if (!workStartTime) return { status: "ON_TIME", lateMinutes: 0 };
+// ============================================================
+// Shared idempotent check-in logic
+// Accepts an optional `tx` (Prisma transaction client).
+// If no existing record for (userId, attendanceDate), creates one.
+// If one already exists, returns it unchanged (idempotent).
+// ============================================================
+const checkInToday = async (userId, { deviceFingerprint, tx: txClient } = {}) => {
+    const db = txClient || prisma;
 
-    const [hours, minutes] = workStartTime.split(":").map(Number);
-    const workStartMinutes = hours * 60 + minutes;
-
-    // Parse hour/minute directly from the ISO string to avoid Date timezone conversion
-    let checkInHour, checkInMinute;
-    if (typeof checkInAt === "string" && checkInAt.includes("T")) {
-        const timePart = checkInAt.split("T")[1]; // "08:50:00.000Z"
-        const [h, m] = timePart.split(":").map(Number);
-        checkInHour = h;
-        checkInMinute = m;
-    } else {
-        const d = new Date(checkInAt);
-        checkInHour = d.getHours();
-        checkInMinute = d.getMinutes();
-    }
-
-    const checkInMinutes = checkInHour * 60 + checkInMinute;
-
-    if (checkInMinutes <= workStartMinutes) return { status: "ON_TIME", lateMinutes: 0 };
-
-    const lateMinutes = checkInMinutes - workStartMinutes;
-    return { status: "LATE", lateMinutes };
-};
-
-// Check-in — ALWAYS uses server time. `at` parameter is intentionally ignored
-// even if sent by client, to prevent timestamp fabrication.
-const checkIn = async (userId, { deviceFingerprint } = {}) => {
-    const user = await prisma.user.findUnique({ where: { id: userId } });
+    const user = await db.user.findUnique({ where: { id: userId } });
     if (!user) throw httpError("User not found", 404);
 
-    const checkInAt = new Date();
+    const now = new Date();
+    const attendanceDate = formatInTimeZone(now, CAIRO_TZ, "yyyy-MM-dd");
+    const scheduledStart = user.workStartTime || null;
+    const scheduledEnd = user.workEndTime || null;
 
-    // Check if already checked in today (no checkout yet)
-    const todayStart = new Date(checkInAt);
-    todayStart.setHours(0, 0, 0, 0);
-    const todayEnd = new Date(todayStart);
-    todayEnd.setDate(todayEnd.getDate() + 1);
-
-    const existingCheckIn = await prisma.attendance.findFirst({
-        where: {
-            userId,
-            checkInAt: { gte: todayStart, lt: todayEnd },
-            checkOutAt: null,
-        },
+    // Find-or-create by (userId, attendanceDate) — unique constraint enforced by DB
+    const existing = await db.attendance.findUnique({
+        where: { userId_attendanceDate: { userId, attendanceDate } },
     });
 
-    if (existingCheckIn) throw httpError("Already checked in today. Check out first.");
+    if (existing) {
+        // Already checked in today — return existing record (idempotent, no overwrite)
+        return { attendance: existing, status: existing.status, lateMinutes: existing.lateMinutes, checkedInAt: existing.checkInAt, idempotent: true };
+    }
 
-    const { status, lateMinutes } = computeAttendanceStatus(checkInAt, user.workStartTime);
+    // Compute ON_TIME / LATE from Cairo local time
+    let status = "ON_TIME";
+    let lateMinutes = 0;
 
-    const attendance = await prisma.attendance.create({
+    if (scheduledStart) {
+        const [sH, sM] = scheduledStart.split(":").map(Number);
+        const workStartMinutes = sH * 60 + sM;
+
+        const cairoTime = formatInTimeZone(now, CAIRO_TZ, "HH:mm:ss");
+        const [cH, cM] = cairoTime.split(":").map(Number);
+        const checkInMinutes = cH * 60 + cM;
+
+        if (checkInMinutes > workStartMinutes) {
+            status = "LATE";
+            lateMinutes = checkInMinutes - workStartMinutes;
+        }
+    }
+
+    const attendance = await db.attendance.create({
         data: {
             userId,
-            checkInAt,
+            attendanceDate,
+            scheduledStart,
+            scheduledEnd,
+            checkInAt: now,
             status,
             lateMinutes,
             deviceFingerprint: deviceFingerprint || null,
         },
     });
 
-    return { attendance, status, lateMinutes, checkedInAt: checkInAt };
+    return { attendance, status, lateMinutes, checkedInAt: now, idempotent: false };
+};
+
+// Manual check-in endpoint — delegates to shared logic (idempotent)
+const checkIn = async (userId, { deviceFingerprint } = {}) => {
+    return checkInToday(userId, { deviceFingerprint });
 };
 
 // Check-out — ALWAYS uses server time. `at` parameter is intentionally ignored
@@ -82,23 +83,14 @@ const checkOut = async (userId) => {
     if (!user) throw httpError("User not found", 404);
 
     const checkOutAt = new Date();
+    const attendanceDate = formatInTimeZone(checkOutAt, CAIRO_TZ, "yyyy-MM-dd");
 
-    // Find today's open check-in
-    const todayStart = new Date(checkOutAt);
-    todayStart.setHours(0, 0, 0, 0);
-    const todayEnd = new Date(todayStart);
-    todayEnd.setDate(todayEnd.getDate() + 1);
-
-    const openAttendance = await prisma.attendance.findFirst({
-        where: {
-            userId,
-            checkInAt: { gte: todayStart, lt: todayEnd },
-            checkOutAt: null,
-        },
-        orderBy: { checkInAt: "desc" },
+    const openAttendance = await prisma.attendance.findUnique({
+        where: { userId_attendanceDate: { userId, attendanceDate } },
     });
 
     if (!openAttendance) throw httpError("No open check-in found for today");
+    if (openAttendance.checkOutAt) throw httpError("Already checked out today");
 
     const workedMs = checkOutAt.getTime() - openAttendance.checkInAt.getTime();
     const workedMinutes = Math.round(workedMs / (1000 * 60));
@@ -167,4 +159,4 @@ const getUserAttendance = async (userId, filters = {}) => {
     };
 };
 
-module.exports = { checkIn, checkOut, getUserAttendance };
+module.exports = { checkIn, checkInToday, checkOut, getUserAttendance };
