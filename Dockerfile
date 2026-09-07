@@ -13,4 +13,4 @@ COPY . .
 
 EXPOSE 5000
 
-CMD ["sh", "-c", "chmod +x start.sh && ./start.sh"]
+CMD ["node", "src/server.js"]
