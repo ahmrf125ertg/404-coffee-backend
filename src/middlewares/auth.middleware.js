@@ -36,11 +36,20 @@ const authMiddleware = async (req, res, next) => {
     // verify JWT token
     const decoded = jwt.verify(token, jwtSecret, { algorithms: ["HS256"] });
 
+    // Validate token type — only "access" tokens are accepted here
+    if (decoded.type && decoded.type !== "access") {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid token type",
+      });
+    }
+
     // Re-check the user still exists and is ACTIVE so a suspended
     // (or deleted) account loses access immediately
+    const userId = decoded.sub || decoded.userId;
     const user = await prisma.user.findUnique({
       where: {
-        id: decoded.userId,
+        id: userId,
       },
       select: {
         id: true,
@@ -67,6 +76,7 @@ const authMiddleware = async (req, res, next) => {
     // (role بتجيله من الداتابيز عشان أي تغيير في الدور يبان فورًا من غير إعادة تسجيل دخول)
     req.user = {
       ...decoded,
+      userId,
       role: user.role,
     };
 

@@ -25,6 +25,7 @@ const app = require("../src/app");
 const prisma = require("../src/lib/prisma");
 
 const TABLE_NAMES = [
+  "auth_sessions",
   "order_events",
   "attendance",
   "employee_devices",

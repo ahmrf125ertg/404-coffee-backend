@@ -6,6 +6,34 @@ const prisma = require("../../lib/prisma");
 
 const { jwtSecret, jwtRefreshSecret, jwtExpiresIn, jwtRefreshExpiresIn } = require("../../config/env");
 
+// Phase 2 will populate sessionId and deviceId from auth_sessions table.
+// For now they are null — login still works, tokens just don't carry session data yet.
+const signAccessToken = (user, { sessionId = null, deviceId = null } = {}) =>
+  jwt.sign(
+    {
+      sub: user.id,
+      employeeId: user.id,
+      roleId: user.role,
+      sessionId,
+      deviceId,
+      type: "access",
+    },
+    jwtSecret,
+    { expiresIn: jwtExpiresIn }
+  );
+
+const signRefreshToken = (user, { sessionId = null, deviceId = null } = {}) =>
+  jwt.sign(
+    {
+      sub: user.id,
+      sessionId,
+      deviceId,
+      type: "refresh",
+    },
+    jwtRefreshSecret,
+    { expiresIn: jwtRefreshExpiresIn }
+  );
+
 const { getExpandedPermissions, PAGES } = require("../../config/roles.config");
 
 const parseExpiresIn = (value) => {
@@ -461,17 +489,9 @@ const loginUser = async ({ name, username, password, device }) => {
     }
   }
 
-  const token = jwt.sign(
-    { userId: user.id, role: user.role },
-    jwtSecret,
-    { expiresIn: jwtExpiresIn }
-  );
-
-  const refreshTokenValue = jwt.sign(
-    { userId: user.id, type: "refresh" },
-    jwtRefreshSecret,
-    { expiresIn: jwtRefreshExpiresIn }
-  );
+  // Phase 1: New payload shape. sessionId/deviceId populated by Phase 2.
+  const token = signAccessToken(user);
+  const refreshTokenValue = signRefreshToken(user);
 
   const role = buildRole(user.role);
   const permissions = buildPermissions(user.role);
@@ -553,15 +573,18 @@ const refreshToken = async (refreshTokenValue) => {
             error.statusCode = 401;
             throw error;
         }
-        const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
+        // Phase 1: read employeeId from sub (standard) or userId (backward compat)
+        const employeeId = decoded.sub || decoded.userId;
+        const user = await prisma.user.findUnique({ where: { id: employeeId } });
         if (!user || user.status !== "ACTIVE") {
             const error = new Error("انتهت الجلسة، يرجى تسجيل الدخول مرة أخرى");
             error.statusCode = 401;
             error.code = "SESSION_EXPIRED";
             throw error;
         }
-        const access_token = jwt.sign({ userId: user.id, role: user.role }, jwtSecret, { expiresIn: jwtExpiresIn });
-        const new_refresh_token = jwt.sign({ userId: user.id, type: "refresh" }, jwtRefreshSecret, { expiresIn: jwtRefreshExpiresIn });
+        // Phase 1: new payload shape. Phase 2 will add session lookup + rotation.
+        const access_token = signAccessToken(user, { sessionId: decoded.sessionId, deviceId: decoded.deviceId });
+        const new_refresh_token = signRefreshToken(user, { sessionId: decoded.sessionId, deviceId: decoded.deviceId });
         const expiresInSeconds = parseExpiresIn(jwtExpiresIn);
         const refreshExpiresInSeconds = parseExpiresIn(jwtRefreshExpiresIn);
         return {

@@ -32,7 +32,7 @@ const resolveOptionalUser = async (req) => {
 
     const user = await prisma.user.findUnique({
         where: {
-            id: decoded.userId,
+            id: decoded.sub || decoded.userId,
         },
         select: {
             id: true,

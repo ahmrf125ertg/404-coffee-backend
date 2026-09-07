@@ -23,9 +23,10 @@ model User {
   closedShifts               CashDrawerShift[]       @relation("ClosedShifts")
   openedShifts               CashDrawerShift[]       @relation("OpenedShifts")
   recordedDrawerTransactions CashDrawerTransaction[] @relation("RecordedDrawerTransactions")
-  approvedDevices            EmployeeDevice[]        @relation("ApprovedByUser")
-  devices                    EmployeeDevice[]        @relation("DeviceOwner")
-  orderEvents                OrderEvent[]
+   approvedDevices            EmployeeDevice[]        @relation("ApprovedByUser")
+   devices                    EmployeeDevice[]        @relation("DeviceOwner")
+   sessions                   AuthSession[]
+   orderEvents                OrderEvent[]
   updatedSettings            Setting[]               @relation("UpdatedSettings")
   pageAccess                 UserPageAccess?
 
@@ -546,10 +547,28 @@ model EmployeeDevice {
   rejectedAt        DateTime?
   approvedBy        User?     @relation("ApprovedByUser", fields: [approvedByUserId], references: [id])
   user              User      @relation("DeviceOwner", fields: [userId], references: [id], onDelete: Cascade)
+  sessions          AuthSession[]
 
   @@index([userId])
   @@index([status])
   @@map("employee_devices")
+}
+
+model AuthSession {
+  id                String    @id @default(uuid())
+  employeeId        Int
+  deviceId          Int?
+  refreshTokenHash  String
+  expiresAt         DateTime
+  revokedAt         DateTime?
+  createdAt         DateTime  @default(now())
+  user              User      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  device            EmployeeDevice? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  @@index([employeeId])
+  @@index([deviceId])
+  @@index([expiresAt])
+  @@map("auth_sessions")
 }
 
 model OrderEvent {
