@@ -111,7 +111,7 @@ All APIs from the frontend engineer's specification (`~/Desktop/الموظفين
 
 - **158 API endpoints** across 22 modules
 - **30 Prisma models**, 12 enums
-- **22/22 unit tests passing** + **72/72 integration tests passing**
+- **61/61 unit tests passing** + **87/87 integration tests passing**
 - **JWT dual-token auth** (access + refresh) with HS256
 - **FIFO inventory deduction** with transaction safety
 - **Order state machine** with optimistic locking
