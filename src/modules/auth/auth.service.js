@@ -583,25 +583,14 @@ const refreshToken = async (refreshTokenValue) => {
 };
 
 const logoutUser = async (userId, refreshTokenValue) => {
-    if (refreshTokenValue) {
-        try {
-            const decoded = jwt.verify(refreshTokenValue, jwtRefreshSecret, { algorithms: ["HS256"] });
-            if (decoded.userId === userId) {
-                await prisma.employeeDevice.deleteMany({
-                    where: { userId },
-                });
-            }
-        } catch (_) {
-            // Token already invalid, still allow logout
-        }
-    }
+    // Phase 1 interim: no destructive side effects.
+    // Full session revocation will be wired in Phase 5 when auth_sessions table is used.
     return { loggedOut: true };
 };
 
 const logoutAllDevices = async (userId) => {
-    await prisma.employeeDevice.deleteMany({
-        where: { userId },
-    });
+    // Phase 1 interim: no destructive side effects.
+    // Full session revocation will be wired in Phase 5 when auth_sessions table is used.
     return { loggedOut: true };
 };
 
