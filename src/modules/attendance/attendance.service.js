@@ -36,12 +36,13 @@ const computeAttendanceStatus = (checkInAt, workStartTime) => {
     return { status: "LATE", lateMinutes };
 };
 
-// Check-in
-const checkIn = async (userId, { deviceFingerprint, at }) => {
+// Check-in — ALWAYS uses server time. `at` parameter is intentionally ignored
+// even if sent by client, to prevent timestamp fabrication.
+const checkIn = async (userId, { deviceFingerprint } = {}) => {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw httpError("User not found", 404);
 
-    const checkInAt = at ? new Date(at) : new Date();
+    const checkInAt = new Date();
 
     // Check if already checked in today (no checkout yet)
     const todayStart = new Date(checkInAt);
@@ -59,7 +60,7 @@ const checkIn = async (userId, { deviceFingerprint, at }) => {
 
     if (existingCheckIn) throw httpError("Already checked in today. Check out first.");
 
-    const { status, lateMinutes } = computeAttendanceStatus(at || checkInAt, user.workStartTime);
+    const { status, lateMinutes } = computeAttendanceStatus(checkInAt, user.workStartTime);
 
     const attendance = await prisma.attendance.create({
         data: {
@@ -74,12 +75,13 @@ const checkIn = async (userId, { deviceFingerprint, at }) => {
     return { attendance, status, lateMinutes, checkedInAt: checkInAt };
 };
 
-// Check-out
-const checkOut = async (userId, { at }) => {
+// Check-out — ALWAYS uses server time. `at` parameter is intentionally ignored
+// even if sent by client, to prevent timestamp fabrication.
+const checkOut = async (userId) => {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw httpError("User not found", 404);
 
-    const checkOutAt = at ? new Date(at) : new Date();
+    const checkOutAt = new Date();
 
     // Find today's open check-in
     const todayStart = new Date(checkOutAt);
