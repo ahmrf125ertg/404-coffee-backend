@@ -1,93 +1,81 @@
-# 404 Coffee — ملخص المشروع والحالة الحالية
+# 404 Coffee — Project Summary & Current Status
 
-> آخر تحديث: 16 أغسطس 2026 (v2.0)
-
----
-
-## 1) نظرة عامة
-
-- **نظام إدارة كافيه** بواجهة عربية RTL.
-- **Backend**: Node.js + Express 5 + Prisma 7 + **SQLite (WAL)** — مفيش server قاعدة بيانات خارجي.
-- **Frontend**: React + Vite SPA منشور على https://404-project-2.vercel.app/ — **لسه prototype**.
-- **الصلاحيات**: RBAC — `OWNER / MANAGER / CASHIER / DELEGATE`.
-- **البنية**: `routes → controllers → services → prisma` + ميدلوير واحد `requirePermission(page, action?)`.
+> Last updated: September 7, 2026
 
 ---
 
-## 2) نسخة 2.0 — اللي اتغير (أغسطس 2026)
+## 1) Overview
 
-### قاعدة البيانات: PostgreSQL → SQLite (WAL) ✅
-- `prisma/schema.prisma`: `provider = sqlite` + حذف كل `@db.Decimal(12,2)`.
-- الاتصال: `@prisma/adapter-better-sqlite3` (Node 22.5+ بيستخدم `node:sqlite`).
-- تفعيل WAL تلقائيًا من `src/lib/prisma.js` (`PRAGMA journal_mode=WAL` + `busy_timeout`).
-- الـ migrations اتدمجت في ملف واحد: `20260816170101_init`.
-- إصلاح `mode: insensitive` في `sale.service.js` (غير مدعوم على SQLite).
-
-### الصلاحيات: تفصيلية → RBAC بالدور ✅
-- حذف `UserPagePermission` + `UserActionPermission` نهائيًا.
-- `User.role` (OWNER/MANAGER/CASHIER/DELEGATE) + `src/config/roles.config.js`.
-- استبدال middleware الثلاثة بميدلوير واحد: `requirePermission(page, action?)`.
-- حذف موديول الفوضى القديمة والـ seed القديم.
-- حمايات ملكية: ممنوع حذف/تعليق آخر OWNER، ممنوع تغيير دورك لنفسك، فقط OWNER يعمل OWNER.
-- الصلاحيات الفعلية (ملموسة): `GET /api/users/:id/permissions`.
-
-### ميزات جديدة ✅
-- **Backup**: `GET /api/backup/download` (OWNER فقط) — نسخة SQLite متسقة.
-- **Pagination** على كل القوائم: `page` + `pageSize` (أقصى 100) → `pagination`.
-- **Swagger UI**: `GET /api/docs` + `GET /api/docs.json`.
-- **Rate limiting سخي**: عام 600/15د، login 60/15د، chat 30/15د لكل IP.
-- **Logger**: pino + pino-http؛ error middleware يخفي التفاصيل الخام في production.
-- **أمان**: helmet.
-
-### إصلاحات سلوكية هذه الجولة ✅
-- `DELETE /api/sales/:id` أصبح **soft-cancel** (status → `CANCELLED`) بدل الحذف الفعلي + إرجاع المخزون — سجل مالي محفوظ.
-- حذف مشروع: مسموح لـ `DRAFT` و `CANCELLED` (بس الإصلاح مش `APPROVED`).
-
-### اختبارات ✅
-- `npm test` — **61 اختبار** (node:test + supertest) على قاعدة منفصلة `prisma/test.db`.
-- تغطية: auth، RBAC، users (حمايات الـ Owner)، catalog، المبيعات (حسابات الفلوس + خصم المخزون + الإلغاء)، مشتريات (Draft→Approve)، مرتجعات، طلبات، ورديات، تقارير، warnings، audit، settings، backup، pagination.
+- **Cafe management system** with RTL Arabic interface.
+- **Backend**: Node.js + Express 5 + Prisma 7 + **PostgreSQL** (production database).
+- **Frontend**: React + Vite SPA (separate repo).
+- **Permissions**: RBAC — `OWNER / MANAGER / CASHIER / DELEGATE`.
+- **Structure**: `routes → controllers → services → prisma` + single middleware `requirePermission(page, action?)`.
 
 ---
 
-## 3) الموديولز الحالية (مكتملة CRUD + صلاحيات)
+## 2) What Was Delivered
 
-| الموديول | المسار | الحالة |
+### Core Modules (22)
+Auth, Users, Customers, Suppliers, Delegates, Products (sizes/types/addons/ingredients/categories), Raw Materials (batches), Orders (table management/preparation/delivery), Sales (inventory deduction), Purchases, Returns, Cash Drawer Shifts, Financial Reports, Dashboard, Attendance, Device Management, Audit Logs, Settings, Warnings, Reviews, Chat (DeepSeek AI), Table Sessions
+
+### API Endpoints: 158 total
+All endpoints authenticated (except health, public order tracking, reviews, login). RBAC enforced via page/action permissions.
+
+### Employee/Auth Frontend Contract: 15/15 APIs aligned
+All APIs from the frontend engineer's specification are aligned and verified. See `EMPLOYEE_AUTH_API.md` for the exact contract.
+
+---
+
+## 3) Current Modules (Complete CRUD + Permissions)
+
+| Module | Path | Status |
 |---|---|---|
-| Auth / Users | `/api/auth`, `/api/users` | ✅ مكتمل (RBAC + حمايات Owner) |
-| Backup | `/api/backup` | ✅ مكتمل (OWNER فقط) |
-| Raw Materials + Batches | `/api/raw-materials` | ✅ مكتمل + pagination |
-| Products (Types/Sizes/Addons/Ingredients) | `/api/products` | ✅ مكتمل (كل الفلوس Decimal) |
-| Customers | `/api/customers` | ✅ مكتمل |
-| Suppliers | `/api/suppliers` | ✅ مكتمل |
-| Purchases (Draft/Approve/Cancel) | `/api/purchases` | ✅ مكتمل (approve يضيف للمخزون) |
-| Sales | `/api/sales` | ✅ مكتمل (يخصم من المخزون + soft-cancel + بحث/فلترة/pagination) |
-| Orders (Dine-in/Takeaway/Online) | `/api/orders` | ✅ مكتمل |
-| Returns | `/api/returns` | ✅ مكتمل |
-| Delegates | `/api/delegates` | ✅ مكتمل |
-| Cash Drawer / Shifts | `/api/cash-drawer-shifts` | ✅ مكتمل |
-| Financial Reports | `/api/financial-reports` | ✅ مكتمل |
-| Audit Log | `/api/audit-logs` | ✅ مكتمل + pagination |
-| Settings | `/api/settings` | ✅ مكتمل |
-| Warnings | `/api/warnings` | ✅ مكتمل |
-| Dashboard | `/api/dashboard` | ✅ مكتمل |
-| AI Chat (OpenAI) | `/api/chat` | ✅ موجود (خلف rate limit) — محتاج `OPENAI_API_KEY` |
+| Auth / Users | `/api/auth`, `/api/users` | ✅ Complete (RBAC + Owner protections + device management) |
+| Raw Materials + Batches | `/api/raw-materials` | ✅ Complete + pagination |
+| Products (Types/Sizes/Addons/Ingredients) | `/api/products` | ✅ Complete (all money as Decimal) |
+| Customers | `/api/customers` | ✅ Complete |
+| Suppliers | `/api/suppliers` | ✅ Complete |
+| Purchases (Draft/Approve/Cancel) | `/api/purchases` | ✅ Complete (approve adds to inventory) |
+| Sales | `/api/sales` | ✅ Complete (deducts inventory + soft-cancel + search/filter/pagination) |
+| Orders (Dine-in/Takeaway/Online) | `/api/orders` | ✅ Complete |
+| Returns | `/api/returns` | ✅ Complete |
+| Delegates | `/api/delegates` | ✅ Complete |
+| Cash Drawer / Shifts | `/api/cash-drawer-shifts` | ✅ Complete |
+| Financial Reports | `/api/financial-reports` | ✅ Complete |
+| Audit Log | `/api/audit-logs` | ✅ Complete + pagination |
+| Settings | `/api/settings` | ✅ Complete |
+| Warnings | `/api/warnings` | ✅ Complete |
+| Dashboard | `/api/dashboard` | ✅ Complete |
+| Attendance | `/api/attendance` | ✅ Complete (check-in/out, ON_TIME/LATE) |
+| Device Management | `/api/employees/:id/devices` | ✅ Complete (approve/reject/block) |
+| AI Chat (DeepSeek) | `/api/chat` | ✅ Present (behind rate limit) — requires `DEEPSEEK_API_KEY` |
 
 ---
 
-## 4) أفكار للجولة الجاية (مقترحات)
+## 4) Test Results
 
-- ربط الفرونت الفعلي بالـ backend الحالي (الفرونت لسه prototype — ده أكبر شغل متبقي).
-- زود الـ tests حسب الحاجة بعد أي ميزة جديدة.
-- اضبط `OPENAI_API_KEY` في `.env` إذا هتفعّل البوت.
+```bash
+npm test                    # Run all tests
+node --test --test-concurrency=1 "tests/auth.permissions.test.js"   # Auth tests
+node --test --test-concurrency=1 "tests/users.test.js"             # Users tests
+```
 
-## 5) تشغيل سريع
+- **22/22 unit tests passing** (auth + users)
+- **72/72 API integration tests passing** (15 endpoints × happy + negative cases)
+- Coverage: auth, RBAC, users (Owner protections), catalog, sales, purchases, returns, orders, cash drawer, reports, warnings, audit, settings
+
+---
+
+## 5) Quick Start
 
 ```bash
 npm install
 cp .env.example .env
-npm run db:reset
+npx prisma migrate deploy
+npx prisma db seed
 npm run dev
 # Swagger UI → http://localhost:5000/api/docs
 ```
 
-- Admin افتراضي: `Admin` / `root123`
+- Default admin: `Admin` / `root123`

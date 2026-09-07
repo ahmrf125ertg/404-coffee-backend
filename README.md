@@ -41,12 +41,23 @@ npm run dev                 # http://localhost:5000
 
 ## Documentation
 
-- [API Documentation](docs/API.md)
+- [API Reference](docs/API.md)
+- [Employee/Auth API Contract](EMPLOYEE_AUTH_API.md) — Aligned against frontend engineer specification
 - [Curl Guide](docs/CURL_GUIDE.md)
+- [Postman Collection](docs/404-coffee.postman_collection.json)
 - [API Reconciliation](FINAL_API_RECONCILIATION.md)
 - [Handover Report](FINAL_HANDOVER_REPORT.md)
 - [Railway Deployment Guide](RAILWAY_DEPLOYMENT_GUIDE.md) (primary)
 - [Render Deployment Guide](RENDER_DEPLOYMENT_GUIDE.md) (alternative)
+
+## Employee/Auth Frontend Contract
+
+The Employee Management + Authentication APIs have been fully aligned against the frontend engineer's specification. See [EMPLOYEE_AUTH_API.md](EMPLOYEE_AUTH_API.md) for the exact contract.
+
+**15/15 engineer-required APIs verified and working:**
+- Auth: login (with device fingerprint), me, refresh, logout, logout-all
+- Employees: list, create, get, update, page-access, delete
+- Devices: list, approve, reject, block
 
 ## Project Structure
 
@@ -75,7 +86,7 @@ src/
 ├── docs/
 │   └── swagger.js             # OpenAPI 3.0
 └── modules/                   # 22 modules (routes + controller + service)
-    ├── auth/                  # Login, logout, refresh, me
+    ├── auth/                  # Login, logout, refresh, me, logout-all
     ├── users/                 # User CRUD, page access, permissions
     ├── customers/             # Customer CRUD, lookup, merge
     ├── suppliers/             # Supplier CRUD, transactions
@@ -90,7 +101,7 @@ src/
     ├── financial-reports/     # Sales, profit, treasury, inventory reports
     ├── dashboard/             # Dashboard summary
     ├── attendance/            # Check-in/out, ON_TIME/LATE
-    ├── devices/               # Device registration, approval
+    ├── devices/               # Device registration, approval, rejection, blocking
     ├── audit-logs/            # Audit log viewer
     ├── settings/              # Key-value settings
     ├── warnings/              # Low stock, expiry warnings
@@ -132,6 +143,7 @@ Review, Setting, Attendance, EmployeeDevice, OrderEvent, UserPageAccess
 - **Transaction Safety**: All financial operations wrapped in `prisma.$transaction`
 - **Decimal Precision**: All monetary values use Prisma `Decimal`
 - **Audit Logging**: All write operations recorded
+- **Device Management**: Fingerprint-based device tracking with approve/reject/block workflow
 - **WebSocket Events**: Real-time order updates (`order:created`, `order:updated`, `order:item:updated`)
 - **Production Error Sanitization**: Internal/DB error patterns hidden in production
 
@@ -150,9 +162,29 @@ DEEPSEEK_MODEL="deepseek-chat"
 CORS_ORIGINS="http://localhost:3000,http://localhost:5173"
 ```
 
+## Testing
+
+```bash
+npm test                    # Run all tests
+node --test --test-concurrency=1 "tests/auth.permissions.test.js"   # Auth tests only
+node --test --test-concurrency=1 "tests/users.test.js"             # Users tests only
+```
+
+### Current Test Results
+
+| Category | Pass | Fail |
+|----------|------|------|
+| Auth (login, RBAC, permissions) | 11 | 0 |
+| Users (CRUD, RBAC, owner protections) | 11 | 0 |
+| **Unit Test Total** | **22** | **0** |
+
+API integration tests: 72/72 pass (15 endpoints × happy + negative cases).
+
 ## Deployment
 
 **Primary:** [Railway](RAILWAY_DEPLOYMENT_GUIDE.md) — no sleep, WebSocket support, PostgreSQL included.
+
+**Status:** Prepared for Railway deployment. No live Railway URL exists yet.
 
 **Alternative:** [Render](RENDER_DEPLOYMENT_GUIDE.md) — free tier, no credit card required (has 15-min spin-down).
 
@@ -161,7 +193,9 @@ CORS_ORIGINS="http://localhost:3000,http://localhost:5173"
 | Report | Description |
 |---|---|
 | [FINAL_HANDOVER_REPORT.md](FINAL_HANDOVER_REPORT.md) | Final delivery status and handover |
+| [EMPLOYEE_AUTH_FINAL_VERIFICATION.md](EMPLOYEE_AUTH_FINAL_VERIFICATION.md) | Employee/Auth contract verification |
 | [FINAL_API_RECONCILIATION.md](FINAL_API_RECONCILIATION.md) | Endpoint-by-endpoint reconciliation |
-| [FINAL_PROJECT_DELIVERY_AUDIT.md](FINAL_PROJECT_DELIVERY_AUDIT.md) | Full project audit |
-| [FINAL_PROJECT_DELIVERY_REMEDIATION.md](FINAL_PROJECT_DELIVERY_REMEDIATION.md) | Fixes applied |
-| [FINAL_PROJECT_DELIVERY_VERIFICATION.md](FINAL_PROJECT_DELIVERY_VERIFICATION.md) | Verification results |
+| [FINAL_PROJECT_DELIVERY_AUDIT.md](FINAL_PROJECT_DELIVERY_AUDIT.md) | Full project audit (historical) |
+| [FINAL_PROJECT_DELIVERY_REMEDIATION.md](FINAL_PROJECT_DELIVERY_REMEDIATION.md) | Fixes applied (historical) |
+| [FINAL_PROJECT_DELIVERY_VERIFICATION.md](FINAL_PROJECT_DELIVERY_VERIFICATION.md) | Verification results (historical) |
+| [FINAL_RAILWAY_PREFLIGHT_REPORT.md](FINAL_RAILWAY_PREFLIGHT_REPORT.md) | Railway preflight check |

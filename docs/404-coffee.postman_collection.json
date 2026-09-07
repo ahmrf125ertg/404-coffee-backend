@@ -1,27 +1,21 @@
 {
   "info": {
     "name": "404 Coffee Backend API",
-    "description": "كل endpoints لمشروع 404 Coffee Backend\n\n## التشغيل\n1. شغّل Backend: `npm run dev` (port 5000)\n2. سجّل دخول من Auth → Login\n3. الـ JWT هيتحفظ تلقائي في المتغير `{{token}}`\n4. كل الـ endpoints التانية هتشتغل تلقائيا",
+    "description": "Full API collection for 404 Coffee Backend\n\n## Setup\n1. Start Backend: `npm run dev` (port 5000)\n2. Login from Auth → Login (Admin)\n3. JWT is auto-saved to `{{token}}` variable\n4. All other endpoints will work automatically\n\n## Variables\n- `base_url` — Backend URL (default: http://localhost:5000)\n- `token` — Admin JWT (auto-set by Login)\n- `cashier_token` — Cashier JWT (auto-set by Cashier Login)\n- `employeeId` — Set after creating/getting a user\n- `deviceId` — Set after listing devices",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    {
-      "key": "base_url",
-      "value": "http://localhost:5000"
-    },
-    {
-      "key": "token",
-      "value": ""
-    }
+    { "key": "base_url", "value": "http://localhost:5000" },
+    { "key": "token", "value": "" },
+    { "key": "cashier_token", "value": "" },
+    { "key": "refreshToken", "value": "" },
+    { "key": "employeeId", "value": "" },
+    { "key": "deviceId", "value": "" }
   ],
   "auth": {
     "type": "bearer",
     "bearer": [
-      {
-        "key": "token",
-        "value": "{{token}}",
-        "type": "string"
-      }
+      { "key": "token", "value": "{{token}}", "type": "string" }
     ]
   },
   "item": [
@@ -30,24 +24,23 @@
       "item": [
         {
           "name": "Health Check",
-          "request": {
-            "method": "GET",
-            "url": "{{base_url}}/api/health"
-          }
+          "request": { "method": "GET", "url": "{{base_url}}/api/health" }
+        },
+        {
+          "name": "Health Ready",
+          "request": { "method": "GET", "url": "{{base_url}}/api/health/ready" }
+        },
+        {
+          "name": "Health Live",
+          "request": { "method": "GET", "url": "{{base_url}}/api/health/live" }
         },
         {
           "name": "Swagger JSON",
-          "request": {
-            "method": "GET",
-            "url": "{{base_url}}/api/docs.json"
-          }
+          "request": { "method": "GET", "url": "{{base_url}}/api/docs.json" }
         },
         {
           "name": "Swagger UI",
-          "request": {
-            "method": "GET",
-            "url": "{{base_url}}/api/docs"
-          }
+          "request": { "method": "GET", "url": "{{base_url}}/api/docs" }
         }
       ]
     },
@@ -62,8 +55,9 @@
               "script": {
                 "exec": [
                   "var res = pm.response.json();",
-                  "if (res.success && res.data && res.data.token) {",
-                  "    pm.collectionVariables.set('token', res.data.token);",
+                  "if (res.success && res.data && res.data.auth) {",
+                  "    pm.collectionVariables.set('token', res.data.auth.access_token);",
+                  "    pm.collectionVariables.set('refreshToken', res.data.auth.refresh_token);",
                   "    console.log('Token saved!');",
                   "}"
                 ],
@@ -74,12 +68,7 @@
           "request": {
             "method": "POST",
             "url": "{{base_url}}/api/auth/login",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"name\": \"Admin\",\n  \"password\": \"root123\"\n}"
@@ -94,8 +83,8 @@
               "script": {
                 "exec": [
                   "var res = pm.response.json();",
-                  "if (res.success && res.data && res.data.token) {",
-                  "    pm.collectionVariables.set('cashier_token', res.data.token);",
+                  "if (res.success && res.data && res.data.auth) {",
+                  "    pm.collectionVariables.set('cashier_token', res.data.auth.access_token);",
                   "    console.log('Cashier token saved!');",
                   "}"
                 ],
@@ -106,22 +95,70 @@
           "request": {
             "method": "POST",
             "url": "{{base_url}}/api/auth/login",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"name\": \"Cashier1\",\n  \"password\": \"123456\"\n}"
             }
           }
+        },
+        {
+          "name": "Get Me",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/auth/me"
+          }
+        },
+        {
+          "name": "Refresh Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var res = pm.response.json();",
+                  "if (res.success && res.data && res.data.access_token) {",
+                  "    pm.collectionVariables.set('token', res.data.access_token);",
+                  "    pm.collectionVariables.set('refreshToken', res.data.refresh_token);",
+                  "    console.log('Tokens refreshed!');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/auth/refresh",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/auth/logout",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" }
+          }
+        },
+        {
+          "name": "Logout All Devices",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/auth/logout-all",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" }
+          }
         }
       ]
     },
     {
-      "name": "2 - Users",
+      "name": "2 - Users / Employees",
       "item": [
         {
           "name": "List Users",
@@ -142,41 +179,66 @@
           "name": "Get User by ID",
           "request": {
             "method": "GET",
-            "url": "{{base_url}}/api/users/1"
+            "url": "{{base_url}}/api/users/{{employeeId}}"
           }
         },
         {
           "name": "Get User Permissions",
           "request": {
             "method": "GET",
-            "url": "{{base_url}}/api/users/1/permissions"
+            "url": "{{base_url}}/api/users/{{employeeId}}/permissions"
           }
         },
         {
           "name": "Create User (Cashier)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var res = pm.response.json();",
+                  "if (res.success && res.data) {",
+                  "    pm.collectionVariables.set('employeeId', res.data.id);",
+                  "    console.log('employeeId saved: ' + res.data.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "url": "{{base_url}}/api/users",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Cashier New\",\n  \"password\": \"123456\",\n  \"position\": \"CASHIER\",\n  \"role\": \"CASHIER\"\n}"
+              "raw": "{\n  \"name\": \"Cashier New\",\n  \"password\": \"123456\",\n  \"position\": \"cashier\",\n  \"workStart\": \"08:00\",\n  \"workEnd\": \"16:00\",\n  \"role\": \"CASHIER\"\n}"
             }
           }
         },
         {
           "name": "Create User (Manager)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var res = pm.response.json();",
+                  "if (res.success && res.data) {",
+                  "    pm.collectionVariables.set('employeeId', res.data.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "url": "{{base_url}}/api/users",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Manager New\",\n  \"password\": \"123456\",\n  \"position\": \"MANAGER\",\n  \"role\": \"MANAGER\"\n}"
+              "raw": "{\n  \"name\": \"Manager New\",\n  \"password\": \"123456\",\n  \"position\": \"manager\",\n  \"workStart\": \"09:00\",\n  \"workEnd\": \"17:00\",\n  \"role\": \"MANAGER\"\n}"
             }
           }
         },
@@ -184,13 +246,23 @@
           "name": "Update User",
           "request": {
             "method": "PUT",
-            "url": "{{base_url}}/api/users/2",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
+            "url": "{{base_url}}/api/users/{{employeeId}}",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Updated Name\",\n  \"position\": \"CASHIER\"\n}"
+              "raw": "{\n  \"name\": \"Updated Name\",\n  \"position\": \"cashier\",\n  \"workStart\": \"09:00\",\n  \"workEnd\": \"17:00\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Update User Page Access",
+          "request": {
+            "method": "PUT",
+            "url": "{{base_url}}/api/users/{{employeeId}}/page-access",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pages\": [\n    { \"pageKey\": \"inventory\", \"visible\": true },\n    { \"pageKey\": \"employees\", \"visible\": false }\n  ]\n}"
             }
           }
         },
@@ -198,10 +270,8 @@
           "name": "Suspend User",
           "request": {
             "method": "PATCH",
-            "url": "{{base_url}}/api/users/2/status",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
+            "url": "{{base_url}}/api/users/{{employeeId}}/status",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"status\": \"SUSPENDED\"\n}"
@@ -212,10 +282,8 @@
           "name": "Resume User",
           "request": {
             "method": "PATCH",
-            "url": "{{base_url}}/api/users/2/status",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
+            "url": "{{base_url}}/api/users/{{employeeId}}/status",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"status\": \"ACTIVE\"\n}"
@@ -223,10 +291,50 @@
           }
         },
         {
+          "name": "Get User Attendance",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/users/{{employeeId}}/attendance"
+          }
+        },
+        {
           "name": "Delete User",
           "request": {
             "method": "DELETE",
-            "url": "{{base_url}}/api/users/2"
+            "url": "{{base_url}}/api/users/{{employeeId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "2b - Employee Devices",
+      "item": [
+        {
+          "name": "List Employee Devices",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/employees/{{employeeId}}/devices"
+          }
+        },
+        {
+          "name": "Approve Device",
+          "request": {
+            "method": "PUT",
+            "url": "{{base_url}}/api/employees/{{employeeId}}/devices/{{deviceId}}/approve"
+          }
+        },
+        {
+          "name": "Reject Device",
+          "request": {
+            "method": "PUT",
+            "url": "{{base_url}}/api/employees/{{employeeId}}/devices/{{deviceId}}/reject"
+          }
+        },
+        {
+          "name": "Block Device",
+          "request": {
+            "method": "PUT",
+            "url": "{{base_url}}/api/employees/{{employeeId}}/devices/{{deviceId}}/block"
           }
         }
       ]
@@ -251,19 +359,14 @@
         },
         {
           "name": "Get Customer by ID",
-          "request": {
-            "method": "GET",
-            "url": "{{base_url}}/api/customers/1"
-          }
+          "request": { "method": "GET", "url": "{{base_url}}/api/customers/1" }
         },
         {
           "name": "Create Customer",
           "request": {
             "method": "POST",
             "url": "{{base_url}}/api/customers",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"name\": \"عميل جديد\",\n  \"phone\": \"01012345678\",\n  \"city\": \"Cairo\"\n}"
@@ -275,21 +378,13 @@
           "request": {
             "method": "PUT",
             "url": "{{base_url}}/api/customers/1",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"name\": \"عميل محدث\"\n}"
-            }
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"عميل محدث\"\n}" }
           }
         },
         {
           "name": "Delete Customer",
-          "request": {
-            "method": "DELETE",
-            "url": "{{base_url}}/api/customers/1"
-          }
+          "request": { "method": "DELETE", "url": "{{base_url}}/api/customers/1" }
         }
       ]
     },
@@ -313,19 +408,14 @@
         },
         {
           "name": "Get Supplier by ID",
-          "request": {
-            "method": "GET",
-            "url": "{{base_url}}/api/suppliers/1"
-          }
+          "request": { "method": "GET", "url": "{{base_url}}/api/suppliers/1" }
         },
         {
           "name": "Create Supplier",
           "request": {
             "method": "POST",
             "url": "{{base_url}}/api/suppliers",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"name\": \"مورد جديد\",\n  \"contactPerson\": \"محمد\",\n  \"phone\": \"01088888888\",\n  \"city\": \"Cairo\",\n  \"supplierType\": \"RAW_MATERIAL\",\n  \"supplierCategory\": \"BEANS\"\n}"
@@ -337,21 +427,13 @@
           "request": {
             "method": "PUT",
             "url": "{{base_url}}/api/suppliers/1",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"name\": \"مورد محدث\"\n}"
-            }
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"مورد محدث\"\n}" }
           }
         },
         {
           "name": "Delete Supplier",
-          "request": {
-            "method": "DELETE",
-            "url": "{{base_url}}/api/suppliers/1"
-          }
+          "request": { "method": "DELETE", "url": "{{base_url}}/api/suppliers/1" }
         }
       ]
     },
@@ -375,19 +457,14 @@
         },
         {
           "name": "Get Delegate by ID",
-          "request": {
-            "method": "GET",
-            "url": "{{base_url}}/api/delegates/1"
-          }
+          "request": { "method": "GET", "url": "{{base_url}}/api/delegates/1" }
         },
         {
           "name": "Create Delegate",
           "request": {
             "method": "POST",
             "url": "{{base_url}}/api/delegates",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"name\": \"مندوب جديد\",\n  \"whatsapp\": \"01077777777\",\n  \"phone\": \"01066666666\"\n}"
@@ -399,21 +476,13 @@
           "request": {
             "method": "PATCH",
             "url": "{{base_url}}/api/delegates/1/status",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"status\": \"UNAVAILABLE\"\n}"
-            }
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"status\": \"UNAVAILABLE\"\n}" }
           }
         },
         {
           "name": "Delete Delegate",
-          "request": {
-            "method": "DELETE",
-            "url": "{{base_url}}/api/delegates/1"
-          }
+          "request": { "method": "DELETE", "url": "{{base_url}}/api/delegates/1" }
         }
       ]
     },
@@ -437,19 +506,18 @@
         },
         {
           "name": "Get Raw Material by ID",
-          "request": {
-            "method": "GET",
-            "url": "{{base_url}}/api/raw-materials/1"
-          }
+          "request": { "method": "GET", "url": "{{base_url}}/api/raw-materials/1" }
+        },
+        {
+          "name": "Get Raw Material Options",
+          "request": { "method": "GET", "url": "{{base_url}}/api/raw-materials/options" }
         },
         {
           "name": "Create Raw Material",
           "request": {
             "method": "POST",
             "url": "{{base_url}}/api/raw-materials",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"name\": \"قهوة أرابيكا\",\n  \"unit\": \"kg\",\n  \"quantity\": 50,\n  \"pricePerUnit\": 200,\n  \"supplier\": \"مورد تجريبي\",\n  \"minStockAlert\": 5\n}"
@@ -461,9 +529,7 @@
           "request": {
             "method": "POST",
             "url": "{{base_url}}/api/raw-materials/1/batches",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"quantity\": 30,\n  \"pricePerUnit\": 28,\n  \"expiryDate\": \"2027-01-01\"\n}"
@@ -475,21 +541,13 @@
           "request": {
             "method": "PUT",
             "url": "{{base_url}}/api/raw-materials/1",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"minStockAlert\": 10\n}"
-            }
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"minStockAlert\": 10\n}" }
           }
         },
         {
           "name": "Delete Raw Material",
-          "request": {
-            "method": "DELETE",
-            "url": "{{base_url}}/api/raw-materials/1"
-          }
+          "request": { "method": "DELETE", "url": "{{base_url}}/api/raw-materials/1" }
         }
       ]
     },
@@ -513,19 +571,14 @@
         },
         {
           "name": "Get Product by ID",
-          "request": {
-            "method": "GET",
-            "url": "{{base_url}}/api/products/1"
-          }
+          "request": { "method": "GET", "url": "{{base_url}}/api/products/1" }
         },
         {
           "name": "Create Product",
           "request": {
             "method": "POST",
             "url": "{{base_url}}/api/products",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"name\": \"كابتشينو\",\n  \"description\": \"كابتشينو كلاسيك\"\n}"
@@ -537,9 +590,7 @@
           "request": {
             "method": "POST",
             "url": "{{base_url}}/api/products/1/sizes",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"typeName\": \"Hot\",\n  \"name\": \"Medium\",\n  \"basePrice\": 30,\n  \"finalPrice\": 35\n}"
@@ -551,9 +602,7 @@
           "request": {
             "method": "POST",
             "url": "{{base_url}}/api/products/1/sizes/1/ingredients",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"rawMaterialId\": 1,\n  \"quantity\": 0.02,\n  \"unit\": \"kg\"\n}"
@@ -565,9 +614,7 @@
           "request": {
             "method": "POST",
             "url": "{{base_url}}/api/products/1/addons",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"name\": \"Extra shot\",\n  \"price\": 10\n}"
@@ -579,13 +626,8 @@
           "request": {
             "method": "POST",
             "url": "{{base_url}}/api/products/1/types",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"name\": \"Regular\"\n}"
-            }
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Regular\"\n}" }
           }
         },
         {
@@ -593,21 +635,13 @@
           "request": {
             "method": "PUT",
             "url": "{{base_url}}/api/products/1",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"description\": \"وصفة جديدة\"\n}"
-            }
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"description\": \"وصفة جديدة\"\n}" }
           }
         },
         {
           "name": "Delete Product",
-          "request": {
-            "method": "DELETE",
-            "url": "{{base_url}}/api/products/1"
-          }
+          "request": { "method": "DELETE", "url": "{{base_url}}/api/products/1" }
         }
       ]
     },
@@ -631,19 +665,14 @@
         },
         {
           "name": "Get Sale by ID",
-          "request": {
-            "method": "GET",
-            "url": "{{base_url}}/api/sales/1"
-          }
+          "request": { "method": "GET", "url": "{{base_url}}/api/sales/1" }
         },
         {
           "name": "Create Sale",
           "request": {
             "method": "POST",
             "url": "{{base_url}}/api/sales",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"customerId\": 1,\n  \"discount\": 5,\n  \"paymentMethod\": \"CASH\",\n  \"items\": [\n    {\n      \"productId\": 1,\n      \"productSizeId\": 1,\n      \"quantity\": 2\n    }\n  ]\n}"
@@ -652,10 +681,7 @@
         },
         {
           "name": "Cancel Sale (Soft Delete)",
-          "request": {
-            "method": "DELETE",
-            "url": "{{base_url}}/api/sales/1"
-          }
+          "request": { "method": "DELETE", "url": "{{base_url}}/api/sales/1" }
         }
       ]
     },
@@ -679,19 +705,14 @@
         },
         {
           "name": "Get Purchase by ID",
-          "request": {
-            "method": "GET",
-            "url": "{{base_url}}/api/purchases/1"
-          }
+          "request": { "method": "GET", "url": "{{base_url}}/api/purchases/1" }
         },
         {
           "name": "Create Purchase (Draft)",
           "request": {
             "method": "POST",
             "url": "{{base_url}}/api/purchases",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"invoiceNo\": \"INV-1001\",\n  \"supplierId\": 1,\n  \"invoiceDate\": \"2026-08-16\",\n  \"discount\": 0,\n  \"total\": 1800,\n  \"finalTotal\": 1800,\n  \"items\": [\n    {\n      \"rawMaterialId\": 1,\n      \"quantity\": 10,\n      \"unit\": \"kg\",\n      \"pricePerUnit\": 180,\n      \"totalPrice\": 1800\n    }\n  ]\n}"
@@ -700,24 +721,15 @@
         },
         {
           "name": "Approve Purchase",
-          "request": {
-            "method": "PATCH",
-            "url": "{{base_url}}/api/purchases/1/approve"
-          }
+          "request": { "method": "PATCH", "url": "{{base_url}}/api/purchases/1/approve" }
         },
         {
           "name": "Cancel Purchase",
-          "request": {
-            "method": "PATCH",
-            "url": "{{base_url}}/api/purchases/2/cancel"
-          }
+          "request": { "method": "PATCH", "url": "{{base_url}}/api/purchases/2/cancel" }
         },
         {
           "name": "Delete Purchase",
-          "request": {
-            "method": "DELETE",
-            "url": "{{base_url}}/api/purchases/2"
-          }
+          "request": { "method": "DELETE", "url": "{{base_url}}/api/purchases/2" }
         }
       ]
     },
@@ -741,19 +753,14 @@
         },
         {
           "name": "Get Order by ID",
-          "request": {
-            "method": "GET",
-            "url": "{{base_url}}/api/orders/1"
-          }
+          "request": { "method": "GET", "url": "{{base_url}}/api/orders/1" }
         },
         {
           "name": "Create Order (Dine In)",
           "request": {
             "method": "POST",
             "url": "{{base_url}}/api/orders",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"orderType\": \"DINE_IN\",\n  \"paymentMethod\": \"CASH\",\n  \"items\": [\n    {\n      \"productId\": 1,\n      \"productSizeId\": 1,\n      \"quantity\": 1\n    }\n  ]\n}"
@@ -765,9 +772,7 @@
           "request": {
             "method": "POST",
             "url": "{{base_url}}/api/orders",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"orderType\": \"TAKEAWAY\",\n  \"paymentMethod\": \"CASH\",\n  \"items\": [\n    {\n      \"productId\": 1,\n      \"productSizeId\": 1,\n      \"quantity\": 2\n    }\n  ]\n}"
@@ -775,25 +780,8 @@
           }
         },
         {
-          "name": "Update Order Status",
-          "request": {
-            "method": "PUT",
-            "url": "{{base_url}}/api/orders/1",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"status\": \"COMPLETED\"\n}"
-            }
-          }
-        },
-        {
           "name": "Delete Order",
-          "request": {
-            "method": "DELETE",
-            "url": "{{base_url}}/api/orders/1"
-          }
+          "request": { "method": "DELETE", "url": "{{base_url}}/api/orders/1" }
         }
       ]
     },
@@ -817,19 +805,14 @@
         },
         {
           "name": "Get Return by ID",
-          "request": {
-            "method": "GET",
-            "url": "{{base_url}}/api/returns/1"
-          }
+          "request": { "method": "GET", "url": "{{base_url}}/api/returns/1" }
         },
         {
           "name": "Create Return",
           "request": {
             "method": "POST",
             "url": "{{base_url}}/api/returns",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"supplierId\": 1,\n  \"returnNo\": \"RET-1\",\n  \"items\": [\n    {\n      \"rawMaterialId\": 1,\n      \"quantity\": 3,\n      \"unit\": \"kg\",\n      \"pricePerUnit\": 200,\n      \"totalPrice\": 600\n    }\n  ]\n}"
@@ -838,17 +821,11 @@
         },
         {
           "name": "Approve Return",
-          "request": {
-            "method": "PATCH",
-            "url": "{{base_url}}/api/returns/1/approve"
-          }
+          "request": { "method": "PATCH", "url": "{{base_url}}/api/returns/1/approve" }
         },
         {
           "name": "Delete Return",
-          "request": {
-            "method": "DELETE",
-            "url": "{{base_url}}/api/returns/1"
-          }
+          "request": { "method": "DELETE", "url": "{{base_url}}/api/returns/1" }
         }
       ]
     },
@@ -872,23 +849,15 @@
         },
         {
           "name": "Get Current Shift",
-          "request": {
-            "method": "GET",
-            "url": "{{base_url}}/api/cash-drawer-shifts/current"
-          }
+          "request": { "method": "GET", "url": "{{base_url}}/api/cash-drawer-shifts/current" }
         },
         {
           "name": "Open Shift",
           "request": {
             "method": "POST",
             "url": "{{base_url}}/api/cash-drawer-shifts",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"openingBalance\": 500\n}"
-            }
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"openingBalance\": 500\n}" }
           }
         },
         {
@@ -896,13 +865,8 @@
           "request": {
             "method": "POST",
             "url": "{{base_url}}/api/cash-drawer-shifts/1/cash-in",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"amount\": 300,\n  \"type\": \"COLLECTION\"\n}"
-            }
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"amount\": 300,\n  \"type\": \"COLLECTION\"\n}" }
           }
         },
         {
@@ -910,13 +874,8 @@
           "request": {
             "method": "POST",
             "url": "{{base_url}}/api/cash-drawer-shifts/1/cash-out",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"amount\": 100,\n  \"type\": \"EXPENSE\"\n}"
-            }
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"amount\": 100,\n  \"type\": \"EXPENSE\"\n}" }
           }
         },
         {
@@ -924,13 +883,8 @@
           "request": {
             "method": "POST",
             "url": "{{base_url}}/api/cash-drawer-shifts/1/close",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"closingBalance\": 700,\n  \"actualBalance\": 700\n}"
-            }
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"closingBalance\": 700,\n  \"actualBalance\": 700\n}" }
           }
         }
       ]
@@ -940,10 +894,7 @@
       "item": [
         {
           "name": "Dashboard Summary",
-          "request": {
-            "method": "GET",
-            "url": "{{base_url}}/api/dashboard"
-          }
+          "request": { "method": "GET", "url": "{{base_url}}/api/dashboard" }
         },
         {
           "name": "Financial Report - Sales",
@@ -962,24 +913,15 @@
         },
         {
           "name": "Financial Report - Profit",
-          "request": {
-            "method": "GET",
-            "url": "{{base_url}}/api/financial-reports/profit"
-          }
+          "request": { "method": "GET", "url": "{{base_url}}/api/financial-reports/profit" }
         },
         {
           "name": "Financial Report - Treasury",
-          "request": {
-            "method": "GET",
-            "url": "{{base_url}}/api/financial-reports/treasury"
-          }
+          "request": { "method": "GET", "url": "{{base_url}}/api/financial-reports/treasury" }
         },
         {
           "name": "Warnings (Low Stock)",
-          "request": {
-            "method": "GET",
-            "url": "{{base_url}}/api/warnings"
-          }
+          "request": { "method": "GET", "url": "{{base_url}}/api/warnings" }
         }
       ]
     },
@@ -988,19 +930,14 @@
       "item": [
         {
           "name": "List Settings",
-          "request": {
-            "method": "GET",
-            "url": "{{base_url}}/api/settings"
-          }
+          "request": { "method": "GET", "url": "{{base_url}}/api/settings" }
         },
         {
           "name": "Bulk Update Settings",
           "request": {
             "method": "POST",
             "url": "{{base_url}}/api/settings/bulk",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"settings\": [\n    { \"key\": \"currency\", \"value\": \"EGP\" }\n  ]\n}"
@@ -1015,9 +952,7 @@
               "raw": "{{base_url}}/api/audit-logs?pageSize=10",
               "host": ["{{base_url}}"],
               "path": ["api", "audit-logs"],
-              "query": [
-                { "key": "pageSize", "value": "10" }
-              ]
+              "query": [{ "key": "pageSize", "value": "10" }]
             }
           }
         }
@@ -1031,9 +966,7 @@
           "request": {
             "method": "POST",
             "url": "{{base_url}}/api/chat",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"مرحبا، عندكم ايه من المنيو؟\"\n    }\n  ]\n}"
@@ -1045,26 +978,10 @@
           "request": {
             "method": "POST",
             "url": "{{base_url}}/api/chat",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"كم عدد المنتجات المتاحة؟\"\n    }\n  ]\n}"
-            }
-          }
-        },
-        {
-          "name": "Chat - Follow Up",
-          "request": {
-            "method": "POST",
-            "url": "{{base_url}}/api/chat",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"ايه أكتر منتج مبيعاً؟\"\n    }\n  ]\n}"
             }
           }
         }
@@ -1080,13 +997,7 @@
             "url": "{{base_url}}/api/users",
             "auth": {
               "type": "bearer",
-              "bearer": [
-                {
-                  "key": "token",
-                  "value": "{{cashier_token}}",
-                  "type": "string"
-                }
-              ]
+              "bearer": [{ "key": "token", "value": "{{cashier_token}}", "type": "string" }]
             }
           }
         },
@@ -1097,13 +1008,7 @@
             "url": "{{base_url}}/api/sales",
             "auth": {
               "type": "bearer",
-              "bearer": [
-                {
-                  "key": "token",
-                  "value": "{{cashier_token}}",
-                  "type": "string"
-                }
-              ]
+              "bearer": [{ "key": "token", "value": "{{cashier_token}}", "type": "string" }]
             }
           }
         },
@@ -1112,9 +1017,7 @@
           "request": {
             "method": "GET",
             "url": "{{base_url}}/api/users",
-            "auth": {
-              "type": "noauth"
-            }
+            "auth": { "type": "noauth" }
           }
         }
       ]

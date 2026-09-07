@@ -20,16 +20,17 @@
 
 ## Endpoint-by-Endpoint Reconciliation
 
-### Auth (4 backend, 2 Postman, 5 Excel)
+### Auth (5 backend, 5 Postman, 5 Excel)
 
 | # | Method | Path | Backend | Postman | Excel | Notes |
 |---|--------|------|---------|---------|-------|-------|
 | 1 | POST | /api/auth/login | ✅ | ✅ | ✅ | |
-| 2 | GET | /api/auth/me | ✅ | ❌ | ✅ | Missing from Postman |
-| 3 | POST | /api/auth/logout | ✅ | ❌ | ✅ | Missing from Postman |
-| 4 | POST | /api/auth/refresh | ✅ | ❌ | ✅ | Missing from Postman |
+| 2 | GET | /api/auth/me | ✅ | ✅ | ✅ | Postman updated (was missing) |
+| 3 | POST | /api/auth/refresh | ✅ | ✅ | ✅ | Postman updated (was missing) |
+| 4 | POST | /api/auth/logout | ✅ | ✅ | ✅ | Postman updated (was missing) |
+| 5 | POST | /api/auth/logout-all | ✅ | ✅ | — | Postman updated (was missing) |
 
-### Users (10 backend, 8 Postman, 12 Excel)
+### Users (13 backend, 11 Postman, 12 Excel)
 
 | # | Method | Path | Backend | Postman | Excel | Notes |
 |---|--------|------|---------|---------|-------|-------|
@@ -40,9 +41,11 @@
 | 5 | PUT | /api/users/:id | ✅ | ✅ | ✅ | |
 | 6 | PATCH | /api/users/:id/status | ✅ | ✅ | ✅ | |
 | 7 | DELETE | /api/users/:id | ✅ | ✅ | ✅ | |
-| 8 | PUT | /api/users/:id/page-access | ✅ | ❌ | ✅ | Missing from Postman |
-| 9 | GET | /api/users/:id/attendance | ✅ | ❌ | ❌ | Extra backend |
-| 10 | GET | /api/users/:id/devices | ✅ | ❌ | ❌ | Extra backend |
+| 8 | PUT | /api/users/:id/page-access | ✅ | ✅ | ✅ | Postman updated (was missing) |
+| 9 | GET | /api/users/:id/attendance | ✅ | ✅ | ❌ | Postman updated (was missing) |
+| 10 | GET | /api/users/:id/devices | ✅ | ❌ | ❌ | Legacy endpoint (use employee devices) |
+| 11 | PATCH | /api/users/:id/devices/:deviceId | ✅ | ❌ | ❌ | Legacy endpoint (use employee devices) |
+| 12 | DELETE | /api/users/:id/devices/:deviceId | ✅ | ❌ | ❌ | Legacy endpoint (use employee devices) |
 
 ### Customers (8 backend, 4 Postman, 5 Excel)
 
@@ -247,31 +250,36 @@
 | 3 | POST | /api/reviews | ✅ | ❌ | ❌ | Extra backend |
 | 4 | DELETE | /api/reviews/:id | ✅ | ❌ | ❌ | Extra backend |
 
-### Other (8 backend, 0 Postman, 0 Excel)
+### Other (14 backend, 3 Postman, 0 Excel)
 
 | # | Method | Path | Backend | Postman | Excel | Notes |
 |---|--------|------|---------|---------|-------|-------|
 | 1 | GET | /api/health | ✅ | ✅ | ❌ | |
-| 2 | GET | /api/health/live | ✅ | ❌ | ❌ | Extra backend |
-| 3 | GET | /api/health/ready | ✅ | ❌ | ❌ | Extra backend |
+| 2 | GET | /api/health/live | ✅ | ✅ | ❌ | Postman updated (was missing) |
+| 3 | GET | /api/health/ready | ✅ | ✅ | ❌ | Postman updated (was missing) |
 | 4 | GET | /api/docs.json | ✅ | ✅ | ❌ | |
 | 5 | GET | /api/docs | ✅ | ✅ | ❌ | |
-| 6 | POST | /api/attendance/check-in | ✅ | ❌ | ❌ | Extra backend |
-| 7 | POST | /api/attendance/check-out | ✅ | ❌ | ❌ | Extra backend |
-| 8 | POST | /api/auth/devices/register | ✅ | ❌ | ❌ | Extra backend |
-| 9 | GET | /api/table-sessions/:tableNumber/active-order | ✅ | ❌ | ❌ | Extra backend |
-| 10 | POST | /api/table-sessions/:tableNumber/service-requests | ✅ | ❌ | ❌ | Extra backend |
+| 6 | POST | /api/attendance/check-in | ✅ | ❌ | ❌ | |
+| 7 | POST | /api/attendance/check-out | ✅ | ❌ | ❌ | |
+| 8 | POST | /api/auth/devices/register | ✅ | ❌ | ❌ | |
+| 9 | GET | /api/table-sessions/:tableNumber/active-order | ✅ | ❌ | ❌ | |
+| 10 | POST | /api/table-sessions/:tableNumber/service-requests | ✅ | ❌ | ❌ | |
+| 11 | GET | /api/employees/:id/devices | ✅ | ✅ | ❌ | Postman updated (Employee/Auth alignment) |
+| 12 | PUT | /api/employees/:id/devices/:deviceId/approve | ✅ | ✅ | ❌ | Postman updated (Employee/Auth alignment) |
+| 13 | PUT | /api/employees/:id/devices/:deviceId/reject | ✅ | ✅ | ❌ | Postman updated (Employee/Auth alignment) |
+| 14 | PUT | /api/employees/:id/devices/:deviceId/block | ✅ | ✅ | ❌ | Postman updated (Employee/Auth alignment) |
 
 ## Summary
 
 | Category | Count | Notes |
 |----------|-------|-------|
 | Backend HTTP endpoints | 158 | Verified: 22 route files + 4 app.js routes |
-| In Postman (unique) | 76 (48%) | Deduplicated from 84 raw collection items |
+| In Postman (unique) | 80+ | Updated: added Employee/Auth endpoints (login me, refresh, logout, logout-all, page-access, attendance, employee devices, health endpoints) |
 | In Excel (all entries) | 152 | 146 HTTP + 3 WebSocket + 3 INTERNAL |
 | Excel HTTP entries matched to backend | 131 (83%) | Of 146 HTTP entries, 131 have a backend implementation |
-| Extra backend (not in Postman) | 82 | Backend endpoints not covered by Postman |
+| Extra backend (not in Postman) | ~74 | Reduced from 82 after Postman sync |
 | Extra backend (not in Excel) | 27 | Backend endpoints absent from Excel catalog |
 | Missing from backend (in Excel) | 15 | Excel HTTP entries with no backend implementation |
+| Employee/Auth alignment | 15/15 | All frontend engineer spec APIs aligned |
 
 **83% of Excel HTTP entries are implemented.** 15 Excel entries lack backend implementation (mostly optional: raw materials batch management, product configuration, image upload). The backend has 27 additional endpoints not in the Excel (purchases, reviews, settings, table-sessions, health, docs, etc.).
