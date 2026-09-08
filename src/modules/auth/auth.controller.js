@@ -61,7 +61,8 @@ const refreshToken = async (req, res, next) => {
 const logoutUser = async (req, res, next) => {
     try {
         const { refreshToken } = req.body || {};
-        await authService.logoutUser(req.user.userId, refreshToken);
+        const sessionId = req.user.sessionId;
+        await authService.logoutUser(req.user.userId, refreshToken, sessionId);
         await logAudit(req, "auth", "logout", `User ${req.user.userId} logged out`);
         res.status(200).json({ success: true, message: "تم تسجيل الخروج بنجاح" });
     } catch (error) {

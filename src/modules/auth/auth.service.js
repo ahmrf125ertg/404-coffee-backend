@@ -757,15 +757,44 @@ const refreshToken = async (refreshTokenValue) => {
     }
 };
 
-const logoutUser = async (userId, refreshTokenValue) => {
-    // Phase 1 interim: no destructive side effects.
-    // Full session revocation will be wired in Phase 5 when auth_sessions table is used.
+const logoutUser = async (userId, refreshTokenValue, sessionId) => {
+    // Phase 5: Revoke the specific session identified by sessionId.
+    if (!sessionId) {
+        return { loggedOut: true };
+    }
+
+    const session = await prisma.authSession.findUnique({ where: { id: sessionId } });
+    if (!session) {
+        return { loggedOut: true };
+    }
+
+    // If a refresh token was provided, verify it belongs to this session
+    if (refreshTokenValue) {
+        const incomingHash = hashToken(refreshTokenValue);
+        if (session.refreshTokenHash !== incomingHash) {
+            // Refresh token doesn't match this session — don't revoke wrong session
+            return { loggedOut: true };
+        }
+    }
+
+    await prisma.authSession.update({
+        where: { id: sessionId },
+        data: { revokedAt: new Date() },
+    });
+
     return { loggedOut: true };
 };
 
 const logoutAllDevices = async (userId) => {
-    // Phase 1 interim: no destructive side effects.
-    // Full session revocation will be wired in Phase 5 when auth_sessions table is used.
+    // Phase 5: Revoke ALL sessions for this employee across all devices.
+    await prisma.authSession.updateMany({
+        where: {
+            employeeId: userId,
+            revokedAt: null,
+        },
+        data: { revokedAt: new Date() },
+    });
+
     return { loggedOut: true };
 };
 
