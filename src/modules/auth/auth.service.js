@@ -33,6 +33,7 @@ const signRefreshToken = (user, { sessionId = null, deviceId = null } = {}) =>
       sessionId,
       deviceId,
       type: "refresh",
+      jti: crypto.randomUUID(),
     },
     jwtRefreshSecret,
     { expiresIn: jwtRefreshExpiresIn }
@@ -616,14 +617,67 @@ const refreshToken = async (refreshTokenValue) => {
         throw error;
     }
     try {
+        // Step 1-2: Verify JWT signature, expiry, and type
         const decoded = jwt.verify(refreshTokenValue, jwtRefreshSecret, { algorithms: ["HS256"] });
         if (decoded.type !== "refresh") {
             const error = new Error("Invalid refresh token");
             error.statusCode = 401;
             throw error;
         }
-        // Phase 1: read employeeId from sub (standard) or userId (backward compat)
+
         const employeeId = decoded.sub || decoded.userId;
+        const sessionId = decoded.sessionId;
+
+        if (!sessionId) {
+            const error = new Error("انتهت الجلسة، يرجى تسجيل الدخول مرة أخرى");
+            error.statusCode = 401;
+            error.code = "SESSION_EXPIRED";
+            throw error;
+        }
+
+        // Step 3: Fetch the AuthSession row
+        const session = await prisma.authSession.findUnique({ where: { id: sessionId } });
+
+        // Step 4: No session found → reject
+        if (!session) {
+            const error = new Error("انتهت الجلسة، يرجى تسجيل الدخول مرة أخرى");
+            error.statusCode = 401;
+            error.code = "SESSION_EXPIRED";
+            throw error;
+        }
+
+        // Step 5: Hash comparison — detect reuse of stale/rotated token
+        const incomingHash = hashToken(refreshTokenValue);
+        if (incomingHash !== session.refreshTokenHash) {
+            // Token reuse detected — revoke the session FIRST, then reject.
+            // Revoking before rejecting ensures that even the legitimately rotated
+            // token (whose hash still matches the old DB hash) will fail on the
+            // next request because session.revokedAt is now set.
+            await prisma.authSession.update({
+                where: { id: sessionId },
+                data: { revokedAt: new Date() },
+            });
+            console.error(
+                `[SECURITY] Refresh token reuse detected for session ${sessionId} (employee ${employeeId}). ` +
+                `Session revoked. Possible token theft.`
+            );
+            const error = new Error("انتهت الجلسة، يرجى تسجيل الدخول مرة أخرى");
+            error.statusCode = 401;
+            error.code = "SESSION_EXPIRED";
+            throw error;
+        }
+
+        // Step 4b: Re-fetch session to check if it was revoked between
+        // our initial fetch and the hash comparison (race condition defense).
+        const currentSession = await prisma.authSession.findUnique({ where: { id: sessionId } });
+        if (currentSession.revokedAt) {
+            const error = new Error("انتهت الجلسة، يرجى تسجيل الدخول مرة أخرى");
+            error.statusCode = 401;
+            error.code = "SESSION_EXPIRED";
+            throw error;
+        }
+
+        // Step 6: Verify employee is still ACTIVE
         const user = await prisma.user.findUnique({ where: { id: employeeId } });
         if (!user || user.status !== "ACTIVE") {
             const error = new Error("انتهت الجلسة، يرجى تسجيل الدخول مرة أخرى");
@@ -631,14 +685,63 @@ const refreshToken = async (refreshTokenValue) => {
             error.code = "SESSION_EXPIRED";
             throw error;
         }
-        // Phase 1: new payload shape. Phase 2 will add session lookup + rotation.
-        const access_token = signAccessToken(user, { sessionId: decoded.sessionId, deviceId: decoded.deviceId });
-        const new_refresh_token = signRefreshToken(user, { sessionId: decoded.sessionId, deviceId: decoded.deviceId });
+
+        // Step 7: For non-admin roles, verify linked device is still APPROVED
+        const isAdminOrManager = user.role === "OWNER" || user.role === "MANAGER";
+        if (!isAdminOrManager && session.deviceId) {
+            const device = await prisma.employeeDevice.findUnique({
+                where: { id: session.deviceId },
+                select: { status: true },
+            });
+            if (!device || device.status !== "APPROVED") {
+                const error = new Error("هذا الجهاز غير مصرح له بتسجيل الدخول");
+                error.statusCode = 403;
+                error.code = "DEVICE_BLOCKED";
+                throw error;
+            }
+        }
+
+        // Step 8-9: Generate new tokens (same sessionId/deviceId), then atomically
+        // update the hash using a conditional WHERE to handle race conditions.
+        // Only ONE concurrent request with the same old hash will succeed.
+        const newAccessToken = signAccessToken(user, { sessionId, deviceId: session.deviceId });
+        const newRefreshToken = signRefreshToken(user, { sessionId, deviceId: session.deviceId });
+        const newRefreshHash = hashToken(newRefreshToken);
+
+        // Atomic conditional update: WHERE id = sessionId AND refreshTokenHash = oldHash
+        // If two requests race, only the first will match (rows affected = 1).
+        const updateResult = await prisma.$executeRaw`
+            UPDATE auth_sessions
+            SET "refreshTokenHash" = ${newRefreshHash}
+            WHERE id = ${sessionId}
+              AND "refreshTokenHash" = ${incomingHash}
+              AND "revokedAt" IS NULL
+        `;
+
+        if (updateResult === 0) {
+            // The conditional update matched 0 rows — this means either:
+            // (a) Another concurrent request already rotated the hash, or
+            // (b) The session was revoked between our check and the update.
+            // In both cases, revoke the session as a safety measure.
+            await prisma.authSession.update({
+                where: { id: sessionId },
+                data: { revokedAt: new Date() },
+            });
+            console.error(
+                `[SECURITY] Concurrent refresh race condition for session ${sessionId} (employee ${employeeId}). ` +
+                `Session revoked as precaution.`
+            );
+            const error = new Error("انتهت الجلسة، يرجى تسجيل الدخول مرة أخرى");
+            error.statusCode = 401;
+            error.code = "SESSION_EXPIRED";
+            throw error;
+        }
+
         const expiresInSeconds = parseExpiresIn(jwtExpiresIn);
         const refreshExpiresInSeconds = parseExpiresIn(jwtRefreshExpiresIn);
         return {
-            access_token,
-            refresh_token: new_refresh_token,
+            access_token: newAccessToken,
+            refresh_token: newRefreshToken,
             token_type: "Bearer",
             expires_in: expiresInSeconds,
             refresh_expires_in: refreshExpiresInSeconds,
