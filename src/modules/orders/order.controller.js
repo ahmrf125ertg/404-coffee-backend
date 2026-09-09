@@ -488,6 +488,64 @@ const completeDelivery = async (req, res, next) => {
     } catch (error) { next(error); }
 };
 
+// ============================================================
+// Lookup order by orderNumber + phone (public, no auth)
+// GET /api/orders/public/lookup
+// ============================================================
+
+const lookupOrderByNumberAndPhone = async (req, res, next) => {
+    try {
+        const { orderNumber, phone } = req.query;
+        if (!orderNumber || !phone) {
+            return res.status(400).json({ success: false, message: "orderNumber and phone are required" });
+        }
+        const data = await orderService.lookupOrderByNumberAndPhone(orderNumber, phone);
+        return res.status(200).json({ success: true, data });
+    } catch (error) { next(error); }
+};
+
+// ============================================================
+// Get orders by phone (public, no auth)
+// GET /api/orders/public/by-phone
+// ============================================================
+
+const getOrdersByPhone = async (req, res, next) => {
+    try {
+        const { phone } = req.query;
+        if (!phone) {
+            return res.status(400).json({ success: false, message: "phone is required" });
+        }
+        const data = await orderService.getOrdersByPhone(phone);
+        return res.status(200).json({ success: true, data });
+    } catch (error) { next(error); }
+};
+
+// ============================================================
+// Record payment for an order
+// POST /api/orders/:id/payments
+// ============================================================
+
+const recordPayment = async (req, res, next) => {
+    try {
+        const result = await orderService.recordPayment(req.params.id, req.body, req.user?.userId);
+        emitOrderUpdated(result.order);
+        await logAudit(req, "orders", "edit_order", `Payment recorded for order`);
+        return res.status(200).json({ success: true, message: "Payment recorded", data: result });
+    } catch (error) { next(error); }
+};
+
+// ============================================================
+// Get unified order (spec section 3 shape)
+// GET /api/orders/:id (upgraded response)
+// ============================================================
+
+const getUnifiedOrderById = async (req, res, next) => {
+    try {
+        const order = await orderService.getUnifiedOrder(req.params.id);
+        return res.status(200).json({ success: true, data: order });
+    } catch (error) { next(error); }
+};
+
 module.exports = {
     createOrder,
     getOrders,
@@ -515,4 +573,8 @@ module.exports = {
     checkoutTable,
     getTableHistory,
     completeDelivery,
+    lookupOrderByNumberAndPhone,
+    getOrdersByPhone,
+    recordPayment,
+    getUnifiedOrderById,
 };

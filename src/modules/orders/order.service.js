@@ -906,26 +906,35 @@ const updateOrderStatus = async (id, data, userId) => {
     const existingOrder = await prisma.order.findUnique({ where: { id: orderId } });
     if (!existingOrder) throw httpError("Order not found", 404);
 
-    const validTransitions = {
-        PENDING: ["PREPARING", "CANCELLED"],
-        PREPARING: ["READY", "CANCELLED"],
-        READY: ["COMPLETED", "CANCELLED"],
-        COMPLETED: [],
-        CANCELLED: [],
-    };
-
-    if (!validTransitions[existingOrder.status]?.includes(status)) {
-        throw httpError(`Cannot transition from ${existingOrder.status} to ${status}`);
-    }
+    // Use the new transition guard from order.transitions.js
+    const { guardOrderTransition } = require("./order.transitions");
+    const { fromStatus, toStatus } = guardOrderTransition(existingOrder.status, status);
 
     const result = await prisma.$transaction(async (tx) => {
         const updateData = { status, version: { increment: 1 } };
         if (delegateId !== undefined) updateData.delegateId = delegateId ? Number(delegateId) : existingOrder.delegateId;
 
+        // Set deliveredAt when transitioning to DELIVERED
+        if (status === "DELIVERED") {
+            updateData.deliveredAt = new Date();
+        }
+
         const order = await tx.order.update({
             where: { id: orderId },
             data: updateData,
             include: getOrderInclude,
+        });
+
+        // Record status change event
+        await tx.orderEvent.create({
+            data: {
+                orderId,
+                type: "STATUS_CHANGE",
+                fromStatus,
+                toStatus,
+                notes: reason || null,
+                userId: userId || null,
+            },
         });
 
         let inventoryEffect = null;
@@ -939,7 +948,6 @@ const updateOrderStatus = async (id, data, userId) => {
         // COMPLETED: create sale + drawer transaction
         if (status === "COMPLETED" && existingOrder.status !== "COMPLETED") {
             const { sale, drawerTransaction } = await createOrderCompletionSale(tx, order, userId);
-            // Link sale to order
             await tx.order.update({
                 where: { id: orderId },
                 data: { saleId: sale.id },
@@ -955,7 +963,8 @@ const updateOrderStatus = async (id, data, userId) => {
 
         // CANCELLED: restore inventory only if it was deducted (order was at least PREPARING)
         if (status === "CANCELLED" && existingOrder.status !== "CANCELLED") {
-            if (existingOrder.status === "PREPARING" || existingOrder.status === "READY") {
+            if (existingOrder.status === "PREPARING" || existingOrder.status === "READY" ||
+                existingOrder.status === "CONFIRMED") {
                 inventoryEffect = await restoreInventoryForOrder(tx, orderId);
             }
         }
@@ -1766,6 +1775,294 @@ const completeDelivery = async (orderId, data = {}, userId) => {
     return result;
 };
 
+// ============================================================
+// Lookup order by orderNumber + phone (public, no auth)
+// ============================================================
+
+const lookupOrderByNumberAndPhone = async (orderNumber, phone) => {
+    if (!orderNumber || !phone) {
+        throw httpError("orderNumber and phone are required");
+    }
+
+    const order = await prisma.order.findFirst({
+        where: {
+            orderNumber: orderNumber.trim(),
+            OR: [
+                { phone: phone.trim() },
+                { customer: { phone: phone.trim() } },
+            ],
+        },
+        include: {
+            items: {
+                include: {
+                    product: { select: { id: true, name: true, image: true } },
+                    productSize: { select: { id: true, name: true } },
+                },
+            },
+        },
+    });
+
+    if (!order) {
+        throw httpError("Order not found or phone does not match", 404);
+    }
+
+    return {
+        orderNumber: order.orderNumber,
+        status: order.status,
+        statusText: STATUS_TEXT[order.status] || order.status,
+        fulfillmentType: order.fulfillmentType,
+        total: Number(order.total),
+        items: order.items.map((i) => ({
+            id: i.id,
+            name: i.product.name,
+            image: i.product.image,
+            sizeName: i.productSize.name,
+            typeName: i.typeName || null,
+            quantity: Number(i.quantity),
+            unitPrice: Number(i.unitPrice),
+            totalPrice: Number(i.totalPrice),
+            status: i.status,
+        })),
+        pricing: {
+            subtotal: Number(order.subtotal),
+            deliveryFee: Number(order.deliveryFee || 0),
+            serviceFee: Number(order.serviceFee || 0),
+            tax: Number(order.tax || 0),
+            discount: Number(order.discount),
+            total: Number(order.total),
+        },
+        createdAt: order.createdAt,
+        updatedAt: order.updatedAt,
+    };
+};
+
+const { STATUS_TEXT } = require("./order.constants");
+
+// ============================================================
+// Get orders by phone (public, no auth)
+// ============================================================
+
+const getOrdersByPhone = async (phone) => {
+    if (!phone) {
+        throw httpError("phone is required");
+    }
+
+    const orders = await prisma.order.findMany({
+        where: {
+            OR: [
+                { phone: phone.trim() },
+                { customer: { phone: phone.trim() } },
+            ],
+        },
+        select: {
+            orderNumber: true,
+            status: true,
+            fulfillmentType: true,
+            items: { select: { id: true } },
+            total: true,
+            createdAt: true,
+        },
+        orderBy: { createdAt: "desc" },
+        take: 50,
+    });
+
+    return orders.map((o) => ({
+        orderNumber: o.orderNumber,
+        status: o.status,
+        statusText: STATUS_TEXT[o.status] || o.status,
+        fulfillmentType: o.fulfillmentType,
+        itemsCount: o.items.length,
+        total: Number(o.total),
+        createdAt: o.createdAt,
+    }));
+};
+
+// ============================================================
+// Record payment for an order
+// ============================================================
+
+const recordPayment = async (orderId, data, userId) => {
+    const orderIdNum = Number(orderId);
+    const { method, amount, reference } = data;
+
+    if (!Number.isInteger(orderIdNum) || orderIdNum <= 0) throw httpError("Invalid order ID");
+    if (!method || !["CASH", "CARD", "WALLET"].includes(method)) throw httpError("Invalid payment method");
+    if (!Number.isFinite(Number(amount)) || Number(amount) <= 0) throw httpError("Amount must be a positive number");
+
+    const existing = await prisma.order.findUnique({ where: { id: orderIdNum } });
+    if (!existing) throw httpError("Order not found", 404);
+    if (existing.status === "COMPLETED" || existing.status === "CANCELLED") {
+        throw httpError("Cannot record payment for completed/cancelled order", 409);
+    }
+
+    const amountNum = Number(amount);
+    const orderTotal = Number(existing.total);
+
+    let newPaymentStatus;
+    if (amountNum >= orderTotal) {
+        newPaymentStatus = "PAID";
+    } else if (amountNum > 0) {
+        newPaymentStatus = "PARTIALLY_PAID";
+    } else {
+        newPaymentStatus = "PENDING";
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+        const order = await tx.order.update({
+            where: { id: orderIdNum },
+            data: {
+                paymentMethod: method,
+                paymentStatus: newPaymentStatus,
+                version: { increment: 1 },
+            },
+            include: getOrderInclude,
+        });
+
+        await tx.orderEvent.create({
+            data: {
+                orderId: orderIdNum,
+                type: "PAYMENT",
+                status: newPaymentStatus,
+                notes: reference || `Payment of ${amountNum} via ${method}`,
+                userId: userId || null,
+            },
+        });
+
+        // Create drawer transaction if CASH
+        let drawerTransaction = null;
+        if (method === "CASH") {
+            const openShift = await tx.cashDrawerShift.findFirst({
+                where: { status: "OPEN" },
+                orderBy: { openedAt: "desc" },
+            });
+            if (openShift) {
+                drawerTransaction = await tx.cashDrawerTransaction.create({
+                    data: {
+                        shiftId: openShift.id,
+                        type: "SALES",
+                        amount: amountNum,
+                        description: `Order ${existing.orderNumber} payment`,
+                        recordedByUserId: userId,
+                    },
+                });
+            }
+        }
+
+        return { order, drawerTransaction, paymentStatus: newPaymentStatus };
+    });
+
+    return {
+        paymentId: result.order.id,
+        orderId: orderIdNum,
+        method,
+        amount: amountNum,
+        status: result.paymentStatus,
+        paidAt: new Date(),
+        drawerTransaction: result.drawerTransaction,
+    };
+};
+
+// ============================================================
+// Get unified order shape (per spec section 3)
+// ============================================================
+
+const getUnifiedOrder = async (id) => {
+    const orderId = Number(id);
+    if (!Number.isInteger(orderId) || orderId <= 0) throw httpError("Invalid order ID");
+
+    const order = await prisma.order.findUnique({
+        where: { id: orderId },
+        include: {
+            customer: { select: { id: true, name: true, phone: true } },
+            delegate: { select: { id: true, name: true, phone: true } },
+            items: {
+                include: {
+                    product: { select: { id: true, name: true, image: true } },
+                    productSize: { select: { id: true, name: true } },
+                },
+            },
+            events: {
+                orderBy: { createdAt: "desc" },
+                take: 50,
+                select: {
+                    id: true,
+                    type: true,
+                    fromStatus: true,
+                    toStatus: true,
+                    notes: true,
+                    createdAt: true,
+                    userId: true,
+                },
+            },
+        },
+    });
+
+    if (!order) throw httpError("Order not found", 404);
+
+    // Resolve userIds to names for statusHistory
+    const userIds = [...new Set(order.events.filter(e => e.userId).map(e => e.userId))];
+    let userMap = {};
+    if (userIds.length > 0) {
+        const users = await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } });
+        userMap = Object.fromEntries(users.map(u => [u.id, u.name]));
+    }
+
+    return {
+        id: order.id,
+        orderNumber: order.orderNumber,
+        channel: order.channel,
+        fulfillmentType: order.fulfillmentType,
+        status: order.status,
+
+        customer: order.customer,
+        table: order.table,
+        deliveryAddress: order.deliveryAddress,
+
+        items: order.items.map((i) => ({
+            id: i.id,
+            productId: i.productId,
+            productSizeId: i.productSizeId,
+            product: i.product,
+            productSize: i.productSize,
+            typeName: i.typeName,
+            quantity: Number(i.quantity),
+            unitPrice: Number(i.unitPrice),
+            totalPrice: Number(i.totalPrice),
+            status: i.status,
+        })),
+
+        pricing: {
+            subtotal: Number(order.subtotal),
+            deliveryFee: Number(order.deliveryFee || 0),
+            serviceFee: Number(order.serviceFee || 0),
+            tax: Number(order.tax || 0),
+            discount: Number(order.discount),
+            total: Number(order.total),
+        },
+
+        payment: {
+            method: order.paymentMethod,
+            status: order.paymentStatus,
+        },
+
+        delegate: order.delegate,
+        trackingToken: order.trackingToken,
+
+        statusHistory: order.events
+            .filter(e => e.type === "STATUS_CHANGE" || e.fromStatus || e.toStatus)
+            .map(e => ({
+                id: e.id,
+                fromStatus: e.fromStatus,
+                toStatus: e.toStatus,
+                changedBy: e.userId ? { id: e.userId, name: userMap[e.userId] || null } : null,
+                createdAt: e.createdAt,
+            })),
+
+        createdAt: order.createdAt,
+        updatedAt: order.updatedAt,
+    };
+};
+
 module.exports = {
     createOrder,
     getOrders,
@@ -1793,4 +2090,8 @@ module.exports = {
     checkoutTable,
     getTableHistory,
     completeDelivery,
+    lookupOrderByNumberAndPhone,
+    getOrdersByPhone,
+    recordPayment,
+    getUnifiedOrder,
 };

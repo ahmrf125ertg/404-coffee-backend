@@ -5,27 +5,58 @@ const { requirePermission } = require("../../middlewares/permission.middleware")
 
 const orderController = require("./order.controller");
 const { validateOrder } = require("./order.validation");
+const {
+    validateCreatePublicOrder,
+    validateCreateAdminOrder,
+    validateUpdateOrderStatus,
+    validateUpdateItemStatus,
+    validateHandOverDelegate,
+    validateCheckoutTable,
+    validateCancelOrder,
+    validateOrderQuery,
+} = require("./order.validation.v2");
 
 const router = express.Router();
 
-// Public order tracking (NO auth required)
+// ============================================================
+// Public order routes (NO auth required)
+// ============================================================
+
+// Public order tracking (by tracking token)
 router.get(
   "/public/:code/tracking",
   orderController.getPublicOrderTracking
 );
 
-// Create public order (NO auth required — customer-facing)
+// Lookup order by orderNumber + phone
+router.get(
+  "/public/lookup",
+  orderController.lookupOrderByNumberAndPhone
+);
+
+// Get orders by phone
+router.get(
+  "/public/by-phone",
+  orderController.getOrdersByPhone
+);
+
+// Create public order (customer-facing)
 router.post(
   "/public",
+  validateCreatePublicOrder,
   orderController.createOrder
 );
+
+// ============================================================
+// Admin order routes (auth required)
+// ============================================================
 
 // Create order
 router.post(
   "/",
   authMiddleware,
   requirePermission("orders", "create_order"),
-  validateOrder,
+  validateCreateAdminOrder,
   orderController.createOrder
 );
 
@@ -34,6 +65,7 @@ router.get(
   "/",
   authMiddleware,
   requirePermission("orders", "view_orders"),
+  validateOrderQuery,
   orderController.getOrders
 );
 
@@ -58,6 +90,7 @@ router.patch(
   "/tables/:tableNumber/close",
   authMiddleware,
   requirePermission("orders", "edit_order"),
+  validateCheckoutTable,
   orderController.closeTableOrder
 );
 
@@ -90,6 +123,7 @@ router.post(
   "/tables/:tableNumber/checkout",
   authMiddleware,
   requirePermission("orders", "edit_order"),
+  validateCheckoutTable,
   orderController.checkoutTable
 );
 
@@ -101,12 +135,16 @@ router.get(
   orderController.getTableHistory
 );
 
-// Get order by ID
+// ============================================================
+// Order-specific routes (must be after /tables/* to avoid conflicts)
+// ============================================================
+
+// Get order by ID (unified shape per spec)
 router.get(
   "/:id",
   authMiddleware,
   requirePermission("orders", "view_orders"),
-  orderController.getOrderById
+  orderController.getUnifiedOrderById
 );
 
 // Update order
@@ -114,7 +152,7 @@ router.put(
   "/:id",
   authMiddleware,
   requirePermission("orders", "edit_order"),
-  validateOrder,
+  validateCreateAdminOrder,
   orderController.updateOrder
 );
 
@@ -126,7 +164,7 @@ router.delete(
   orderController.deleteOrder
 );
 
-// Order tracking
+// Order tracking (admin)
 router.get(
   "/:id/tracking",
   authMiddleware,
@@ -139,7 +177,16 @@ router.post(
   "/:id/cancel",
   authMiddleware,
   requirePermission("orders", "edit_order"),
+  validateCancelOrder,
   orderController.cancelOrder
+);
+
+// Record payment for order
+router.post(
+  "/:id/payments",
+  authMiddleware,
+  requirePermission("orders", "edit_order"),
+  orderController.recordPayment
 );
 
 // Complete delivery
@@ -190,11 +237,12 @@ router.post(
   orderController.reopenItem
 );
 
-// Update order status (bulk)
+// Update order status (with new transitions)
 router.patch(
   "/:id/status",
   authMiddleware,
   requirePermission("orders", "edit_order"),
+  validateUpdateOrderStatus,
   orderController.updateOrderStatus
 );
 
@@ -203,6 +251,7 @@ router.patch(
   "/:id/items/:itemId/status",
   authMiddleware,
   requirePermission("orders", "edit_order"),
+  validateUpdateItemStatus,
   orderController.updateOrderItemStatus
 );
 
@@ -211,6 +260,7 @@ router.patch(
   "/:id/hand-over-delegate",
   authMiddleware,
   requirePermission("orders", "edit_order"),
+  validateHandOverDelegate,
   orderController.handOverOrderToDelegate
 );
 
