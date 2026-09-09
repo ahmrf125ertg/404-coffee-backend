@@ -778,7 +778,7 @@ const ALLOWED_ITEM_STATUSES = ["PENDING", "PREPARING", "READY", "CANCELLED"];
 const updateOrderItemStatus = async (orderId, itemId, data) => {
     const orderIdNum = Number(orderId);
     const itemIdNum = Number(itemId);
-    const { status } = data;
+    const { status, reason } = data;
 
     if (!Number.isInteger(orderIdNum) || orderIdNum <= 0) {
         throw httpError("Invalid order ID");
@@ -800,6 +800,10 @@ const updateOrderItemStatus = async (orderId, itemId, data) => {
         throw httpError("Order not found", 404);
     }
 
+    if (order.status === "COMPLETED" || order.status === "CANCELLED") {
+        throw httpError("Cannot modify items on completed/cancelled order", 409);
+    }
+
     const orderItem = await prisma.orderItem.findFirst({
         where: { id: itemIdNum, orderId: orderIdNum },
     });
@@ -808,13 +812,40 @@ const updateOrderItemStatus = async (orderId, itemId, data) => {
         throw httpError("Order item not found", 404);
     }
 
-    const updatedItem = await prisma.orderItem.update({
-        where: { id: itemIdNum },
-        data: { status },
-        include: {
-            product: { select: { id: true, name: true } },
-            productSize: { select: { id: true, name: true } },
-        },
+    // Validate item status transition
+    const { guardItemTransition } = require("./order.transitions");
+    guardItemTransition(orderItem.status, status);
+
+    let inventoryEffect = null;
+
+    const result = await prisma.$transaction(async (tx) => {
+        const updatedItem = await tx.orderItem.update({
+            where: { id: itemIdNum },
+            data: { status },
+            include: {
+                product: { select: { id: true, name: true } },
+                productSize: { select: { id: true, name: true } },
+            },
+        });
+
+        // CANCELLED item: restore inventory if it was deducted
+        if (status === "CANCELLED" && (orderItem.status === "PREPARING" || orderItem.status === "READY")) {
+            inventoryEffect = await restoreItemInventory(tx, orderItem);
+        }
+
+        // Record item event
+        await tx.orderEvent.create({
+            data: {
+                orderId: orderIdNum,
+                type: "ITEM_STATUS_CHANGE",
+                fromStatus: orderItem.status,
+                toStatus: status,
+                notes: reason || null,
+                userId: null,
+            },
+        });
+
+        return updatedItem;
     });
 
     // Auto-update order status based on item statuses
@@ -827,7 +858,10 @@ const updateOrderItemStatus = async (orderId, itemId, data) => {
     const anyPreparing = activeItems.some((i) => i.status === "PREPARING");
 
     let newOrderStatus = order.status;
-    if (allReady) {
+    if (activeItems.length === 0) {
+        // All items cancelled → cancel the order
+        newOrderStatus = "CANCELLED";
+    } else if (allReady) {
         newOrderStatus = "READY";
     } else if (anyPreparing) {
         newOrderStatus = "PREPARING";
@@ -836,14 +870,74 @@ const updateOrderItemStatus = async (orderId, itemId, data) => {
     if (newOrderStatus !== order.status) {
         await prisma.order.update({
             where: { id: orderIdNum },
-            data: { status: newOrderStatus },
+            data: { status: newOrderStatus, version: { increment: 1 } },
+        });
+
+        // Record order status change
+        await prisma.orderEvent.create({
+            data: {
+                orderId: orderIdNum,
+                type: "STATUS_CHANGE",
+                fromStatus: order.status,
+                toStatus: newOrderStatus,
+                notes: activeItems.length === 0 ? "All items cancelled" : null,
+                userId: null,
+            },
         });
     }
 
+    const readyCount = allItems.filter((i) => i.status === "READY").length;
+
     return {
-        item: updatedItem,
+        item: result,
         orderStatus: newOrderStatus,
+        readyCount,
+        totalItems: allItems.length,
     };
+};
+
+// ============================================================
+// Restore inventory for a single cancelled item
+// ============================================================
+
+const restoreItemInventory = async (tx, orderItem) => {
+    const item = await tx.orderItem.findUnique({
+        where: { id: orderItem.id },
+        include: {
+            productSize: {
+                include: { ingredients: true },
+            },
+        },
+    });
+
+    if (!item) return null;
+
+    const quantity = Number(item.quantity);
+    const restoredBatches = [];
+
+    for (const ing of item.productSize.ingredients) {
+        const ingredientQty = Number(ing.quantity) * quantity;
+        if (ingredientQty <= 0) continue;
+
+        const batch = await tx.rawMaterialBatch.findFirst({
+            where: { rawMaterialId: ing.rawMaterialId, quantity: { gt: 0 } },
+            orderBy: { addedAt: "desc" },
+        });
+
+        if (batch) {
+            await tx.rawMaterialBatch.update({
+                where: { id: batch.id },
+                data: { quantity: { increment: ingredientQty } },
+            });
+            restoredBatches.push({
+                rawMaterialId: ing.rawMaterialId,
+                batchId: batch.id,
+                restoredQty: ingredientQty,
+            });
+        }
+    }
+
+    return restoredBatches;
 };
 
 // ============================================================
