@@ -1,7 +1,7 @@
 const tableSessionService = require("./table-session.service");
 const orderService = require("../orders/order.service");
 const { logAudit } = require("../../utils/audit");
-const { emitServiceRequestCreated, emitServiceRequestResolved } = require("../../websocket/socket.events");
+const { emitServiceRequestCreated, emitServiceRequestUpdated } = require("../../websocket/socket.events");
 
 // ============================================================
 // GET /api/table-sessions/:tableNumber/active-order
@@ -71,7 +71,7 @@ const resolveServiceRequest = async (req, res, next) => {
 
         await logAudit(req, "orders", "resolve_service_request", `Service request ${req.params.id} resolved`);
 
-        emitServiceRequestResolved(updated);
+        emitServiceRequestUpdated(updated);
 
         return res.status(200).json({
             success: true,
