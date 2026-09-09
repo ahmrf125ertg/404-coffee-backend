@@ -10,6 +10,8 @@ const {
     emitOrderUpdated,
 } = require("../../websocket/socket.events");
 
+const { checkIdempotency, storeIdempotency } = require("./order.idempotency");
+
 // ============================================================
 // Create order
 // POST /api/orders
@@ -17,16 +19,35 @@ const {
 
 const createOrder = async (req, res, next) => {
     try {
+        // Check idempotency key
+        const idempotencyKey = req.headers["idempotency-key"];
+        if (idempotencyKey) {
+            const cached = await checkIdempotency(idempotencyKey);
+            if (cached) {
+                return res.status(cached.statusCode).json(cached.body);
+            }
+        }
+
         const order = await orderService.createOrder(req.body);
+
+        const responsePayload = {
+            success: true,
+            message: order._autoPrepared
+                ? "Order created and preparation started"
+                : "Order created successfully",
+            data: order,
+        };
+
+        // Store idempotency response
+        if (idempotencyKey) {
+            const statusCode = 201;
+            await storeIdempotency(idempotencyKey, "POST /api/orders", statusCode, responsePayload);
+        }
 
         emitOrderCreated(order);
 
         await logAudit(req, "orders", "create_order", "Order created successfully");
-        return res.status(201).json({
-            success: true,
-            message: "Order created successfully",
-            data: order,
-        });
+        return res.status(201).json(responsePayload);
     } catch (error) {
         next(error);
     }
@@ -210,14 +231,31 @@ const getTableSummaries = async (req, res, next) => {
 
 const updateOrderStatus = async (req, res, next) => {
     try {
+        // Check idempotency key
+        const idempotencyKey = req.headers["idempotency-key"];
+        if (idempotencyKey) {
+            const cached = await checkIdempotency(idempotencyKey);
+            if (cached) {
+                return res.status(cached.statusCode).json(cached.body);
+            }
+        }
+
         const result = await orderService.updateOrderStatus(req.params.id, req.body, req.user?.userId);
         emitOrderUpdated(result.order);
-        await logAudit(req, "orders", "edit_order", `Order ${result.order.orderNumber} status changed to ${result.order.status}`);
-        return res.status(200).json({
+
+        const responsePayload = {
             success: true,
             message: "Order status updated",
             data: result,
-        });
+        };
+
+        // Store idempotency response
+        if (idempotencyKey) {
+            await storeIdempotency(idempotencyKey, `PATCH /api/orders/${req.params.id}/status`, 200, responsePayload);
+        }
+
+        await logAudit(req, "orders", "edit_order", `Order ${result.order.orderNumber} status changed to ${result.order.status}`);
+        return res.status(200).json(responsePayload);
     } catch (error) {
         next(error);
     }

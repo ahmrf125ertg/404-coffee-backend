@@ -341,6 +341,38 @@ const createOrder = async (data) => {
             },
             include: getOrderInclude,
         });
+
+        // Auto-transition admin/waiter orders to PREPARING (inventory deducted immediately)
+        const autoPrepare = channel === "ADMIN_POS" || channel === "TABLE_WAITER";
+        if (autoPrepare) {
+            await deductInventoryForOrder(tx, created.id);
+            await tx.orderItem.updateMany({
+                where: { orderId: created.id, status: "PENDING" },
+                data: { status: "PREPARING" },
+            });
+            await tx.order.update({
+                where: { id: created.id },
+                data: { status: "PREPARING", version: { increment: 1 } },
+            });
+            // Record status event
+            await tx.orderEvent.create({
+                data: {
+                    orderId: created.id,
+                    type: "STATUS_CHANGE",
+                    fromStatus: "PENDING",
+                    toStatus: "PREPARING",
+                    notes: "Auto-started by admin/waiter",
+                    userId: null,
+                },
+            });
+            // Re-fetch with updated status
+            const updated = await tx.order.findUnique({
+                where: { id: created.id },
+                include: getOrderInclude,
+            });
+            return { ...updated, _autoPrepared: true };
+        }
+
         return created;
     });
 
