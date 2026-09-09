@@ -12,6 +12,12 @@ const {
   addBatch,
   getMaterialBatches,
   getRawMaterialsOptions,
+  updateBatch,
+  deleteBatch,
+  updateBatchesPriority,
+  createWithdrawal,
+  getWithdrawals,
+  getReturnOptions,
 } = require("./raw-material.controller");
 
 const router = express.Router();
@@ -22,6 +28,22 @@ router.get(
   authMiddleware,
   requirePermission("inventory", "view_inventory"),
   getRawMaterialsOptions
+);
+
+// Get return options (materials with batches for returns)
+router.get(
+  "/return-options",
+  authMiddleware,
+  requirePermission("inventory", "view_inventory"),
+  getReturnOptions
+);
+
+// Get withdrawal history (must be before /:id)
+router.get(
+  "/withdrawals",
+  authMiddleware,
+  requirePermission("inventory", "view_inventory"),
+  getWithdrawals
 );
 
 // Get all raw materials
@@ -62,6 +84,38 @@ router.post(
   authMiddleware,
   requirePermission("inventory", "add_batch"),
   addBatch
+);
+
+// Edit batch
+router.put(
+  "/:id/batches/:batchId",
+  authMiddleware,
+  requirePermission("inventory", "edit_material"),
+  updateBatch
+);
+
+// Delete batch
+router.delete(
+  "/:id/batches/:batchId",
+  authMiddleware,
+  requirePermission("inventory", "delete_material"),
+  deleteBatch
+);
+
+// Update batch withdrawal priorities
+router.put(
+  "/:id/batches-priority",
+  authMiddleware,
+  requirePermission("inventory", "edit_material"),
+  updateBatchesPriority
+);
+
+// Manual withdrawal from batch
+router.post(
+  "/:id/withdrawals",
+  authMiddleware,
+  requirePermission("inventory", "add_batch"),
+  createWithdrawal
 );
 
 // Update raw material

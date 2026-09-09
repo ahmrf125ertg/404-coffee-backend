@@ -124,9 +124,21 @@ const getSupplierOptions = async (req, res, next) => {
 // Get supplier transactions
 const getSupplierTransactions = async (req, res, next) => {
     try {
-        const { page, pageSize } = parsePagination(req.query);
-        const { items, total, summary } = await supplierService.getSupplierTransactions(req.params.id, req.query);
-        res.status(200).json({ success: true, data: items, pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) }, summary });
+        const { items, summary } = await supplierService.getSupplierTransactions(req.params.id, req.query);
+        res.status(200).json({ success: true, data: items, summary });
+    } catch (error) { next(error); }
+};
+
+// Create supplier transaction
+const createTransaction = async (req, res, next) => {
+    try {
+        await supplierService.createTransaction(req.params.id, req.body);
+        await logAudit(req, "suppliers", "create_transaction", "Transaction recorded");
+        res.status(201).json({
+            success: true,
+            message: "تم تسجيل المعاملة بنجاح",
+            data: {},
+        });
     } catch (error) { next(error); }
 };
 
@@ -139,4 +151,5 @@ module.exports = {
     deleteSupplier,
     getSupplierOptions,
     getSupplierTransactions,
+    createTransaction,
 };

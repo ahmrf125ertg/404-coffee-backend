@@ -144,7 +144,8 @@ describe("Inventory: raw materials + batches", () => {
       .send({ name: "Coffee Beans", unit: "kg", quantity: 50, pricePerUnit: 200, supplier: "Tazweed", minStockAlert: 5 });
 
     assert.equal(res.status, 201);
-    const materialId = res.body.data.id;
+    const material = await prisma.rawMaterial.findFirst({ where: { name: "Coffee Beans" } });
+    const materialId = material.id;
 
     const batches = await request(app)
       .get(`/api/raw-materials/${materialId}/batches`)

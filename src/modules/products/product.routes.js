@@ -1,4 +1,7 @@
 const express = require("express");
+const multer = require("multer");
+const path = require("path");
+const fs = require("fs");
 
 const authMiddleware = require("../../middlewares/auth.middleware");
 const { requirePermission } = require("../../middlewares/permission.middleware");
@@ -26,9 +29,37 @@ const {
   createCategory,
   updateCategory,
   deleteCategory,
+  getPosCatalog,
+  getPublicCatalog,
+  getPublicCategories,
+  getTopProducts,
+  createProductConfiguration,
+  updateProductConfiguration,
 } = require("./product.controller");
 
 const router = express.Router();
+
+const UPLOADS_DIR = path.join(__dirname, "../../../uploads/products");
+fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, UPLOADS_DIR),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname) || ".webp";
+    cb(null, `temp-${Date.now()}${ext}`);
+  },
+});
+
+const fileFilter = (req, file, cb) => {
+  const allowed = ["image/png", "image/jpeg", "image/webp"];
+  if (allowed.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error("Only PNG, JPEG, and WebP images are allowed"));
+  }
+};
+
+const upload = multer({ storage, fileFilter, limits: { fileSize: 5 * 1024 * 1024 } });
 
 // Categories (must be before /:id to avoid conflict)
 router.get(
@@ -201,6 +232,40 @@ router.delete(
   authMiddleware,
   requirePermission("products", "delete_product"),
   deleteProduct
+);
+
+// POS Catalog (authenticated)
+router.get(
+  "/pos-catalog",
+  authMiddleware,
+  requirePermission("products", "view_products"),
+  getPosCatalog
+);
+
+// Public Catalog (no auth)
+router.get("/public", getPublicCatalog);
+
+// Public Categories (no auth)
+router.get("/public/categories", getPublicCategories);
+
+// Top Products (no auth)
+router.get("/public/top", getTopProducts);
+
+// Product Configuration (multipart)
+router.post(
+  "/configuration",
+  authMiddleware,
+  requirePermission("products", "create_product"),
+  upload.single("image"),
+  createProductConfiguration
+);
+
+router.put(
+  "/:id/configuration",
+  authMiddleware,
+  requirePermission("products", "edit_product"),
+  upload.single("image"),
+  updateProductConfiguration
 );
 
 module.exports = router;

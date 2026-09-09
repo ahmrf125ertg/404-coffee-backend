@@ -37,7 +37,8 @@ model RawMaterial {
   id                     Int                     @id @default(autoincrement())
   name                   String                  @unique
   unit                   String
-  supplier               String
+  supplier               String?
+  supplierId             Int?
   minStockAlert          Decimal
   expiryAlertDays        Int?
   addedAt                DateTime                @default(now())
@@ -48,24 +49,52 @@ model RawMaterial {
   purchaseItems          PurchaseItem[]
   batches                RawMaterialBatch[]
   returnItems            ReturnItem[]
+  withdrawals            RawMaterialWithdrawal[]
+  supplierRel            Supplier?               @relation(fields: [supplierId], references: [id], onDelete: SetNull)
 
+  @@index([supplierId])
   @@map("raw_materials")
 }
 
 model RawMaterialBatch {
-  id            Int         @id @default(autoincrement())
-  rawMaterialId Int
-  quantity      Decimal
-  pricePerUnit  Decimal
-  expiryDate    DateTime?
-  addedAt       DateTime    @default(now())
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
-  rawMaterial   RawMaterial @relation(fields: [rawMaterialId], references: [id], onDelete: Cascade)
+  id                 Int         @id @default(autoincrement())
+  rawMaterialId      Int
+  batchNumber        String?
+  quantity           Decimal
+  initialQuantity    Decimal?
+  pricePerUnit       Decimal
+  expiryDate         DateTime?
+  withdrawalPriority Int?
+  addedAt            DateTime    @default(now())
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+  rawMaterial        RawMaterial @relation(fields: [rawMaterialId], references: [id], onDelete: Cascade)
+  withdrawals        RawMaterialWithdrawal[]
 
   @@index([rawMaterialId])
   @@index([expiryDate])
   @@map("raw_material_batches")
+}
+
+model RawMaterialWithdrawal {
+  id            Int              @id @default(autoincrement())
+  rawMaterialId Int
+  batchId       Int
+  quantity      Decimal
+  unitCost      Decimal
+  totalCost     Decimal
+  reason        String?
+  processedByUserId Int?
+  processedAt   DateTime         @default(now())
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  rawMaterial   RawMaterial      @relation(fields: [rawMaterialId], references: [id], onDelete: Cascade)
+  batch         RawMaterialBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([rawMaterialId])
+  @@index([batchId])
+  @@index([processedAt])
+  @@map("raw_material_withdrawals")
 }
 
 model Product {
@@ -217,6 +246,8 @@ model Supplier {
   updatedAt             DateTime   @updatedAt
   purchases             Purchase[]
   returns               Return[]
+  rawMaterials          RawMaterial[]
+  transactions          SupplierTransaction[]
 
   @@map("suppliers")
 }
@@ -401,6 +432,24 @@ model ReturnItem {
   @@index([returnId])
   @@index([rawMaterialId])
   @@map("return_items")
+}
+
+model SupplierTransaction {
+  id              Int      @id @default(autoincrement())
+  supplierId      Int
+  type            String
+  category        String
+  amount          Decimal
+  transactionDate DateTime
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  supplier        Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@index([supplierId])
+  @@index([transactionDate])
+  @@index([type])
+  @@map("supplier_transactions")
 }
 
 model Delegate {

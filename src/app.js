@@ -8,6 +8,7 @@ const cors = require("cors");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const { pinoHttp } = require("pino-http");
+const path = require("path");
 
 const logger = require("./lib/logger");
 const { nodeEnv } = require("./config/env");
@@ -115,6 +116,11 @@ app.get("/api/health", (req, res) => {
     message: "404 Coffee API is running",
   });
 });
+
+// ============================================================
+// Static files (uploads)
+// ============================================================
+app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
 // ============================================================
 // API Docs (Swagger)

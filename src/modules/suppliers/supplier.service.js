@@ -25,6 +25,18 @@ const getSupplierById = async (id) => {
         where: {
             id: Number(id),
         },
+        include: {
+            rawMaterials: {
+                select: { id: true, name: true, unit: true },
+                orderBy: { name: "asc" },
+            },
+            purchases: {
+                select: { total: true },
+            },
+            returns: {
+                select: { totalValue: true },
+            },
+        },
     });
 
     if (!supplier) {
@@ -33,7 +45,19 @@ const getSupplierById = async (id) => {
         throw error;
     }
 
-    return supplier;
+    const totalOut = supplier.purchases.reduce((s, p) => s + Number(p.total), 0);
+    const totalIn = supplier.returns.reduce((s, r) => s + Number(r.totalValue), 0);
+
+    const { purchases, returns, ...rest } = supplier;
+
+    return {
+        ...rest,
+        accountSummary: {
+            debtBalance: totalOut,
+            receivableBalance: totalIn,
+            netBalance: totalOut - totalIn,
+        },
+    };
 };
 
 
@@ -217,40 +241,102 @@ const getSupplierOptions = async (query = {}) => {
             { phone: { contains: query.search.trim(), mode: "insensitive" } },
         ];
     }
-    return prisma.supplier.findMany({ where, select: { id: true, name: true, phone: true }, orderBy: { name: "asc" } });
+    return prisma.supplier.findMany({ where, select: { id: true, name: true }, orderBy: { name: "asc" } });
 };
 
-// Get supplier transactions
+// Get supplier transactions (purchases + returns + SupplierTransaction)
 const getSupplierTransactions = async (supplierId, filters = {}) => {
     const id = Number(supplierId);
     if (!Number.isInteger(id) || id <= 0) { const error = new Error("Invalid supplier ID"); error.statusCode = 400; throw error; }
     const supplier = await prisma.supplier.findUnique({ where: { id } });
     if (!supplier) { const error = new Error("Supplier not found"); error.statusCode = 404; throw error; }
     const { skip, take } = parsePagination(filters);
-    const purchaseWhere = { supplierId: id };
-    const returnWhere = { supplierId: id };
+
+    const txWhere = { supplierId: id };
     if (filters.from) {
-        purchaseWhere.invoiceDate = { ...purchaseWhere.invoiceDate, gte: new Date(filters.from) };
-        returnWhere.returnDate = { ...returnWhere.returnDate, gte: new Date(filters.from) };
+        txWhere.transactionDate = { ...txWhere.transactionDate, gte: new Date(filters.from) };
     }
     if (filters.to) {
-        purchaseWhere.invoiceDate = { ...purchaseWhere.invoiceDate, lte: new Date(filters.to) };
-        returnWhere.returnDate = { ...returnWhere.returnDate, lte: new Date(filters.to) };
+        txWhere.transactionDate = { ...txWhere.transactionDate, lte: new Date(filters.to) };
     }
-    let purchases = await prisma.purchase.findMany({ where: purchaseWhere, orderBy: { invoiceDate: "desc" }, select: { id: true, invoiceNo: true, invoiceDate: true, total: true, status: true } });
-    let returns = await prisma.return.findMany({ where: returnWhere, orderBy: { returnDate: "desc" }, select: { id: true, returnNo: true, returnDate: true, totalValue: true, status: true } });
-    if (filters.type === "PURCHASE") { returns = []; }
-    if (filters.type === "RETURN") { purchases = []; }
-    const allTx = [
-        ...purchases.map(p => ({ ...p, type: "PURCHASE", date: p.invoiceDate, amount: Number(p.total) })),
-        ...returns.map(r => ({ ...r, type: "RETURN", date: r.returnDate, amount: Number(r.totalValue) })),
-    ].sort((a, b) => new Date(b.date) - new Date(a.date));
-    const total = allTx.length;
-    const pageTx = allTx.slice(skip, skip + take);
-    const totalOut = purchases.reduce((s, p) => s + Number(p.total), 0);
-    const totalIn = returns.reduce((s, r) => s + Number(r.totalValue), 0);
+
+    let transactions = await prisma.supplierTransaction.findMany({
+        where: txWhere,
+        orderBy: { transactionDate: "desc" },
+    });
+
+    if (filters.type) {
+        transactions = transactions.filter((t) => t.type === filters.type);
+    }
+
+    const total = transactions.length;
+    const pageTx = transactions.slice(skip, skip + take);
+
+    const totalIn = transactions
+        .filter((t) => t.category === "RECEIVABLE")
+        .reduce((s, t) => s + Number(t.amount), 0);
+    const totalOut = transactions
+        .filter((t) => t.category === "DEBT")
+        .reduce((s, t) => s + Number(t.amount), 0);
+
     const summary = { totalIn, totalOut, balance: totalOut - totalIn };
     return { items: pageTx, total, summary };
+};
+
+// Create supplier transaction
+const createTransaction = async (supplierId, { type, category, amount, transactionDate, notes }) => {
+    const id = Number(supplierId);
+    if (!Number.isInteger(id) || id <= 0) {
+        const error = new Error("Invalid supplier ID");
+        error.statusCode = 400;
+        throw error;
+    }
+
+    const supplier = await prisma.supplier.findUnique({ where: { id } });
+    if (!supplier) {
+        const error = new Error("Supplier not found");
+        error.statusCode = 404;
+        throw error;
+    }
+
+    if (!type || !category || amount === undefined || !transactionDate) {
+        const error = new Error("type, category, amount, and transactionDate are required");
+        error.statusCode = 400;
+        throw error;
+    }
+
+    const validTypes = ["DEBT", "RECEIVABLE", "PAYMENT"];
+    if (!validTypes.includes(type)) {
+        const error = new Error("Invalid type. Must be DEBT, RECEIVABLE, or PAYMENT");
+        error.statusCode = 400;
+        throw error;
+    }
+
+    const validCategories = ["DEBT", "RECEIVABLE"];
+    if (!validCategories.includes(category)) {
+        const error = new Error("Invalid category. Must be DEBT or RECEIVABLE");
+        error.statusCode = 400;
+        throw error;
+    }
+
+    if (Number(amount) <= 0) {
+        const error = new Error("Amount must be positive");
+        error.statusCode = 400;
+        throw error;
+    }
+
+    const transaction = await prisma.supplierTransaction.create({
+        data: {
+            supplierId: id,
+            type,
+            category,
+            amount: Number(amount),
+            transactionDate: new Date(transactionDate),
+            notes: notes || null,
+        },
+    });
+
+    return transaction;
 };
 
 
@@ -262,4 +348,5 @@ module.exports = {
     deleteSupplier,
     getSupplierOptions,
     getSupplierTransactions,
+    createTransaction,
 };
