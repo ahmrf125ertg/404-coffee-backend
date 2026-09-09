@@ -339,8 +339,12 @@ model Order {
   phone           String?
   subtotal        Decimal
   discount        Decimal       @default(0)
+  deliveryFee     Decimal       @default(0)
+  serviceFee      Decimal       @default(0)
+  tax             Decimal       @default(0)
   total           Decimal
   paymentMethod   PaymentMethod @default(CASH)
+  paymentStatus   PaymentStatus @default(PENDING)
   notes           String?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
@@ -369,6 +373,10 @@ model Order {
   @@index([orderNumber])
   @@index([trackingToken])
   @@index([saleId])
+  @@index([channel, status, createdAt])
+  @@index([fulfillmentType, status, createdAt])
+  @@index([status, createdAt])
+  @@index([customerId, createdAt])
   @@map("orders")
 }
 
@@ -380,6 +388,7 @@ model OrderItem {
   quantity      Decimal
   unitPrice     Decimal
   totalPrice    Decimal
+  typeName      String?
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
   status        OrderItemStatus @default(PENDING)
@@ -391,6 +400,7 @@ model OrderItem {
   @@index([productId])
   @@index([productSizeId])
   @@index([status])
+  @@index([orderId, status])
   @@map("order_items")
 }
 
@@ -625,19 +635,22 @@ model AuthSession {
 }
 
 model OrderEvent {
-  id        Int      @id @default(autoincrement())
-  orderId   Int
-  type      String
-  status    String?
-  notes     String?
-  userId    Int?
-  createdAt DateTime @default(now())
-  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  user      User?    @relation(fields: [userId], references: [id])
+  id         Int      @id @default(autoincrement())
+  orderId    Int
+  type       String
+  status     String?
+  fromStatus String?
+  toStatus   String?
+  notes      String?
+  userId     Int?
+  createdAt  DateTime @default(now())
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  user       User?    @relation(fields: [userId], references: [id])
 
   @@index([orderId])
   @@index([type])
   @@index([createdAt])
+  @@index([orderId, createdAt])
   @@map("order_events")
 }
 
@@ -676,6 +689,14 @@ enum PaymentMethod {
   WALLET
 }
 
+enum PaymentStatus {
+  PENDING
+  PAID
+  PARTIALLY_PAID
+  REFUNDED
+  CANCELLED
+}
+
 enum SaleStatus {
   COMPLETED
   CANCELLED
@@ -688,8 +709,12 @@ enum OrderType {
 
 enum OrderStatus {
   PENDING
+  CONFIRMED
   PREPARING
   READY
+  ASSIGNED_TO_DELEGATE
+  OUT_FOR_DELIVERY
+  DELIVERED
   COMPLETED
   CANCELLED
 }
@@ -739,18 +764,59 @@ enum ServiceRequestStatus {
   CANCELLED
 }
 
+enum TableSessionStatus {
+  OPEN
+  CLOSED
+}
+
 model ServiceRequest {
-  id              Int                 @id @default(autoincrement())
-  tableNumber     Int
-  type            ServiceRequestType  @default(WAITER)
-  reason          String?
-  status          ServiceRequestStatus @default(PENDING)
+  id               Int                  @id @default(autoincrement())
+  tableNumber      Int
+  type             ServiceRequestType   @default(WAITER)
+  reason           String?
+  status           ServiceRequestStatus @default(PENDING)
   resolvedByUserId Int?
-  resolvedAt      DateTime?
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
+  resolvedAt       DateTime?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
 
   @@index([tableNumber])
   @@index([status])
+  @@index([status, createdAt])
+  @@index([tableNumber, status])
   @@map("service_requests")
+}
+
+// ============================================================
+// Phase 1: New models (not wired into endpoints yet)
+// ============================================================
+
+model TableSession {
+  id             String            @id @default(uuid())
+  tableNumber    Int
+  status         TableSessionStatus @default(OPEN)
+  tableToken     String            @unique
+  trackingToken  String?           @unique
+  guestsCount    Int?
+  openedAt       DateTime          @default(now())
+  closedAt       DateTime?
+
+  @@index([tableNumber])
+  @@index([status])
+  @@index([tableNumber, status])
+  @@map("table_sessions")
+}
+
+model OrderIdempotency {
+  id           Int      @id @default(autoincrement())
+  key          String   @unique
+  endpoint     String
+  responseBody Json
+  statusCode   Int
+  createdAt    DateTime @default(now())
+  expiresAt    DateTime
+
+  @@index([key])
+  @@index([expiresAt])
+  @@map("order_idempotency")
 }
