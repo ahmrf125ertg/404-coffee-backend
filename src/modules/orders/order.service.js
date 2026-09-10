@@ -111,8 +111,12 @@ const validateAndPrepareItems = async (items) => {
 const ALLOWED_ORDER_TYPES = ["tables", "online"];
 const ALLOWED_STATUSES = [
     "PENDING",
+    "CONFIRMED",
     "PREPARING",
     "READY",
+    "ASSIGNED_TO_DELEGATE",
+    "OUT_FOR_DELIVERY",
+    "DELIVERED",
     "COMPLETED",
     "CANCELLED",
 ];
@@ -205,12 +209,19 @@ const createOrder = async (data) => {
     } = data;
 
     // --------------------------------------------------------
-    // Determine order type: public orders default to "online"
+    // Determine order type: infer from context
     // --------------------------------------------------------
 
-    const resolvedOrderType = (channel === "CUSTOMER_WEB" && !data.orderType)
-        ? "online"
-        : (orderType || "tables");
+    let resolvedOrderType;
+    if (data.orderType) {
+        resolvedOrderType = data.orderType;
+    } else if (channel === "CUSTOMER_WEB") {
+        resolvedOrderType = "online";
+    } else if (fulfillmentType === "DINE_IN" || tableNumber) {
+        resolvedOrderType = "tables";
+    } else {
+        resolvedOrderType = "online";
+    }
 
     const resolvedCustomerName = customerName || (customer ? customer.name : null);
     const resolvedCustomerPhone = customerPhone || (customer ? customer.phone : null);
