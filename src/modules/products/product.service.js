@@ -417,8 +417,8 @@ const getTopProducts = async ({ limit = 6, days = 30 } = {}) => {
         createdAt: { gte: since },
       },
     },
-    _sum: { quantity: true },
-    orderBy: { _sum: { quantity: "desc" } },
+    _count: { id: true },
+    orderBy: { _count: { id: "desc" } },
     take: Number(limit),
   });
 
@@ -450,7 +450,7 @@ const getTopProducts = async ({ limit = 6, days = 30 } = {}) => {
         name: p.name,
         image: p.image,
         sellingPrice: p.sizes[0] ? Number(p.sizes[0].finalPrice) : 0,
-        totalOrders: t._sum?.quantity || 0,
+        totalOrders: t._count?.id || 0,
       };
     })
     .filter(Boolean);

@@ -25,6 +25,7 @@ const app = require("../src/app");
 const prisma = require("../src/lib/prisma");
 
 const TABLE_NAMES = [
+  "order_item_addons",
   "auth_sessions",
   "order_events",
   "attendance",
@@ -38,6 +39,8 @@ const TABLE_NAMES = [
   "sales",
   "order_items",
   "orders",
+  "table_sessions",
+  "service_requests",
   "return_items",
   "returns",
   "purchase_items",

@@ -57,12 +57,23 @@ const initSocket = (httpServer) => {
       }
     }
 
-    // Dynamic room join (for future use)
+    // Dynamic room join (for admin only; tracking clients auto-join owned rooms)
     socket.on("join-room", (roomName) => {
-      if (typeof roomName === "string" && roomName.length < 200) {
-        socket.join(roomName);
-        logger.debug({ socketId: socket.id, room: roomName }, "Joined room");
+      if (typeof roomName !== "string" || roomName.length >= 200) return;
+
+      // Tracking-token clients can only join rooms they own
+      if (socket.user.authType === "tracking") {
+        const ownedRooms = [];
+        if (socket.user.orderId) ownedRooms.push(`order:${socket.user.orderId}`);
+        if (socket.user.sessionId) ownedRooms.push(`table-session:${socket.user.sessionId}`);
+        if (!ownedRooms.includes(roomName)) {
+          logger.debug({ socketId: socket.id, room: roomName }, "Denied room join (not owned)");
+          return;
+        }
       }
+
+      socket.join(roomName);
+      logger.debug({ socketId: socket.id, room: roomName }, "Joined room");
     });
 
     socket.on("leave-room", (roomName) => {

@@ -200,7 +200,28 @@ const getTableSession = async (tableNumber) => {
         orderBy: { openedAt: "desc" },
     });
 
-    return session;
+    if (!session) return null;
+
+    // Aggregate orders for this session by matching table number + active status
+    const orders = await prisma.order.findMany({
+        where: {
+            table: String(tn),
+            orderType: "tables",
+            status: { notIn: ["CANCELLED"] },
+            createdAt: { gte: session.openedAt },
+        },
+        select: { id: true, total: true },
+    });
+
+    return {
+        id: session.id,
+        tableNumber: session.tableNumber,
+        status: session.status,
+        ordersCount: orders.length,
+        grandTotal: orders.reduce((sum, o) => sum + Number(o.total), 0),
+        trackingToken: session.trackingToken,
+        openedAt: session.openedAt,
+    };
 };
 
 // ============================================================

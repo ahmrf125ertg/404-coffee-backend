@@ -187,14 +187,15 @@ model ProductSizeIngredient {
 }
 
 model ProductAddon {
-  id        Int      @id @default(autoincrement())
-  productId Int
-  name      String
-  price     Decimal
-  notes     String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  id            Int              @id @default(autoincrement())
+  productId     Int
+  name          String
+  price         Decimal
+  notes         String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  product       Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  orderItems    OrderItemAddon[]
 
   @@unique([productId, name])
   @@index([productId])
@@ -389,12 +390,14 @@ model OrderItem {
   unitPrice     Decimal
   totalPrice    Decimal
   typeName      String?
+  notes         String?
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
   status        OrderItemStatus @default(PENDING)
   order         Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product       Product         @relation(fields: [productId], references: [id])
   productSize   ProductSize     @relation(fields: [productSizeId], references: [id])
+  addons        OrderItemAddon[]
 
   @@index([orderId])
   @@index([productId])
@@ -402,6 +405,20 @@ model OrderItem {
   @@index([status])
   @@index([orderId, status])
   @@map("order_items")
+}
+
+model OrderItemAddon {
+  id            Int           @id @default(autoincrement())
+  orderItemId   Int
+  addonId       Int
+  createdAt     DateTime      @default(now())
+  orderItem     OrderItem     @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  addon         ProductAddon  @relation(fields: [addonId], references: [id], onDelete: Cascade)
+
+  @@unique([orderItemId, addonId])
+  @@index([orderItemId])
+  @@index([addonId])
+  @@map("order_item_addons")
 }
 
 model Return {

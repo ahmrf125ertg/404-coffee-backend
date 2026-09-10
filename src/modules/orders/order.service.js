@@ -77,7 +77,7 @@ const validateAndPrepareItems = async (items) => {
         const productSize = sizeMap.get(productSizeId);
         if (!productSize) {
             throw httpError(
-                `Product size with ID ${item.productSizeId} not found`,
+                `Product size ${item.productSizeId} not found`,
                 404
             );
         }
@@ -99,6 +99,9 @@ const validateAndPrepareItems = async (items) => {
             quantity,
             unitPrice,
             totalPrice,
+            typeName: item.typeName || null,
+            notes: item.notes || null,
+            addonIds: Array.isArray(item.addonIds) ? item.addonIds.map(Number).filter(Boolean) : [],
         });
     }
 
@@ -330,6 +333,9 @@ const createOrder = async (data) => {
     // --------------------------------------------------------
 
     const order = await prisma.$transaction(async (tx) => {
+        // Strip addonIds before Prisma create (they're stored in a separate table)
+        const itemsForCreate = orderItems.map(({ addonIds, ...rest }) => rest);
+
         const created = await tx.order.create({
             data: {
                 orderNumber,
@@ -348,10 +354,29 @@ const createOrder = async (data) => {
                 paymentMethod,
                 notes: notes || null,
                 trackingToken,
-                items: { create: orderItems },
+                items: { create: itemsForCreate },
             },
             include: getOrderInclude,
         });
+
+        // Create OrderItemAddon records for addons
+        const createdItems = await tx.orderItem.findMany({ where: { orderId: created.id } });
+        const itemById = new Map(createdItems.map(ci => [ci.id, ci]));
+        for (const item of orderItems) {
+            if (!item.addonIds || item.addonIds.length === 0) continue;
+            // Find the created item by matching productId + productSizeId
+            const matchItem = createdItems.find(ci => ci.productId === item.productId && ci.productSizeId === item.productSizeId);
+            if (!matchItem) continue;
+            // Validate addonIds belong to the product
+            const validAddons = await tx.productAddon.findMany({
+                where: { id: { in: item.addonIds }, productId: item.productId },
+            });
+            if (validAddons.length > 0) {
+                await tx.orderItemAddon.createMany({
+                    data: validAddons.map(a => ({ orderItemId: matchItem.id, addonId: a.id })),
+                });
+            }
+        }
 
         // Auto-transition admin/waiter orders to PREPARING (inventory deducted immediately)
         const autoPrepare = channel === "ADMIN_POS" || channel === "TABLE_WAITER";
@@ -451,20 +476,40 @@ const getOrders = async (filters = {}) => {
     const [orders, total] = await Promise.all([
         prisma.order.findMany({
             where,
-
-            include: getOrderInclude,
-
-            orderBy: {
-                createdAt: "desc",
+            select: {
+                id: true,
+                orderNumber: true,
+                channel: true,
+                fulfillmentType: true,
+                status: true,
+                total: true,
+                createdAt: true,
+                table: true,
+                customer: { select: { id: true, name: true, phone: true } },
+                _count: { select: { items: true } },
             },
-
+            orderBy: { createdAt: "desc" },
             skip,
             take,
         }),
         prisma.order.count({ where }),
     ]);
 
-    return { items: orders, total, page, pageSize };
+    const items = orders.map((o) => ({
+        id: o.id,
+        orderNumber: o.orderNumber,
+        channel: o.channel,
+        fulfillmentType: o.fulfillmentType,
+        status: o.status,
+        customerName: o.customer?.name || null,
+        phone: o.customer?.phone || null,
+        table: o.table,
+        itemCount: o._count.items,
+        total: Number(o.total),
+        createdAt: o.createdAt,
+    }));
+
+    return { items, total, page, pageSize };
 };
 
 // ============================================================
@@ -978,19 +1023,32 @@ const getPrepOrders = async () => {
         where: {
             status: { in: ["PENDING", "PREPARING"] },
         },
-        include: {
+        select: {
+            id: true,
+            orderNumber: true,
+            fulfillmentType: true,
+            table: true,
+            status: true,
+            createdAt: true,
             items: {
-                where: { status: { in: ["PENDING", "PREPARING"] } },
-                include: {
-                    product: { select: { id: true, name: true } },
-                    productSize: { select: { id: true, name: true, typeName: true } },
-                },
+                select: { id: true, status: true },
             },
         },
         orderBy: { createdAt: "asc" },
     });
 
-    return orders.filter((o) => o.items.length > 0);
+    return orders
+        .filter((o) => o.items.length > 0)
+        .map((o) => ({
+            id: o.id,
+            orderNumber: o.orderNumber,
+            fulfillmentType: o.fulfillmentType,
+            table: o.table,
+            status: o.status,
+            itemCount: o.items.length,
+            readyCount: o.items.filter(i => i.status === "READY").length,
+            createdAt: o.createdAt,
+        }));
 };
 
 // ============================================================
@@ -1017,30 +1075,36 @@ const getTableSummaries = async () => {
         orderBy: { createdAt: "desc" },
     });
 
+    // Also fetch open table sessions to get sessionId and openedAt
+    const tableNumbers = [...new Set(activeOrders.map(o => o.table).filter(Boolean))];
+    const sessions = await prisma.tableSession.findMany({
+        where: { tableNumber: { in: tableNumbers.map(Number) }, status: "OPEN" },
+        select: { tableNumber: true, id: true, openedAt: true },
+    });
+    const sessionMap = new Map(sessions.map(s => [String(s.tableNumber), s]));
+
     const tableMap = new Map();
     for (const order of activeOrders) {
         const table = order.table || "unknown";
         if (!tableMap.has(table)) {
+            const session = sessionMap.get(table);
             tableMap.set(table, {
-                table,
-                orders: [],
-                totalItems: 0,
-                pendingItems: 0,
-                readyItems: 0,
+                tableNumber: Number(table),
+                sessionId: session ? session.id : null,
+                status: "BUSY",
+                ordersCount: 0,
+                itemsCount: 0,
+                readyItemsCount: 0,
+                total: 0,
+                openedAt: session ? session.openedAt : null,
             });
         }
         const summary = tableMap.get(table);
-        summary.orders.push({
-            id: order.id,
-            orderNumber: order.orderNumber,
-            status: order.status,
-            total: Number(order.total),
-            createdAt: order.createdAt,
-        });
+        summary.ordersCount++;
+        summary.total += Number(order.total);
         for (const item of order.items) {
-            summary.totalItems++;
-            if (item.status === "PENDING" || item.status === "PREPARING") summary.pendingItems++;
-            if (item.status === "READY") summary.readyItems++;
+            summary.itemsCount++;
+            if (item.status === "READY") summary.readyItemsCount++;
         }
     }
 
@@ -1286,6 +1350,8 @@ const closeTableOrder = async (tableNumber, userId, paymentData = {}) => {
         );
     }
 
+    const { paymentMethod, amountPaid } = paymentData;
+
     const result = await prisma.$transaction(async (tx) => {
         const updatedOrders = [];
 
@@ -1308,6 +1374,7 @@ const closeTableOrder = async (tableNumber, userId, paymentData = {}) => {
         const firstOrder = updatedOrders[0];
         const totalPaid = updatedOrders.reduce((s, o) => s + Number(o.total), 0);
         const totalDiscount = updatedOrders.reduce((s, o) => s + Number(o.discount), 0);
+        const resolvedMethod = paymentMethod || firstOrder.paymentMethod;
 
         const sale = await tx.sale.create({
             data: {
@@ -1315,7 +1382,7 @@ const closeTableOrder = async (tableNumber, userId, paymentData = {}) => {
                 subtotal: updatedOrders.reduce((s, o) => s + Number(o.subtotal), 0),
                 discount: totalDiscount,
                 total: totalPaid,
-                paymentMethod: firstOrder.paymentMethod,
+                paymentMethod: resolvedMethod,
                 status: "COMPLETED",
             },
         });
@@ -1324,7 +1391,12 @@ const closeTableOrder = async (tableNumber, userId, paymentData = {}) => {
         for (const o of updatedOrders) {
             await tx.order.update({
                 where: { id: o.id },
-                data: { saleId: sale.id },
+                data: {
+                    saleId: sale.id,
+                    paymentMethod: resolvedMethod,
+                    paymentStatus: "PAID",
+                    version: { increment: 1 },
+                },
             });
         }
 
@@ -1344,18 +1416,17 @@ const closeTableOrder = async (tableNumber, userId, paymentData = {}) => {
             }
         }
 
-        let drawerTransaction = null;
-        if (firstOrder.paymentMethod === "CASH") {
+        if (resolvedMethod === "CASH") {
             const openShift = await tx.cashDrawerShift.findFirst({
                 where: { status: "OPEN" },
                 orderBy: { openedAt: "desc" },
             });
             if (openShift) {
-                drawerTransaction = await tx.cashDrawerTransaction.create({
+                await tx.cashDrawerTransaction.create({
                     data: {
                         shiftId: openShift.id,
                         type: "SALES",
-                        amount: totalPaid,
+                        amount: Number(amountPaid) || totalPaid,
                         description: `Table ${tableNumber} closed`,
                         recordedByUserId: userId,
                     },
@@ -1363,7 +1434,29 @@ const closeTableOrder = async (tableNumber, userId, paymentData = {}) => {
             }
         }
 
-        return { orders: updatedOrders, sale, drawerTransaction, checkout: { saleId: sale.id, paymentMethod: firstOrder.paymentMethod, total: totalPaid, discount: totalDiscount, drawerTransaction } };
+        // Find and close the table session
+        let sessionId = null;
+        let closedAt = new Date();
+        const tableSession = await tx.tableSession.findFirst({
+            where: { tableNumber: Number(tableNumber), status: "OPEN" },
+            orderBy: { openedAt: "desc" },
+        });
+        if (tableSession) {
+            await tx.tableSession.update({
+                where: { id: tableSession.id },
+                data: { status: "CLOSED", closedAt },
+            });
+            sessionId = tableSession.id;
+        }
+
+        return {
+            orders: updatedOrders,
+            sessionId,
+            ordersCount: updatedOrders.length,
+            paymentStatus: "PAID",
+            total: totalPaid,
+            closedAt,
+        };
     });
 
     return result;
@@ -2277,6 +2370,27 @@ const getUnifiedOrder = async (id) => {
         userMap = Object.fromEntries(users.map(u => [u.id, u.name]));
     }
 
+    // Calculate paidAmount from sale payments
+    let paidAmount = 0;
+    if (order.saleId) {
+        const saleItems = await prisma.saleItem.findMany({ where: { saleId: order.saleId } });
+        paidAmount = saleItems.reduce((sum, si) => sum + Number(si.totalPrice), 0);
+    }
+
+    // Resolve addons for each order item
+    const orderItemIds = order.items.map(i => i.id);
+    const addonRows = orderItemIds.length > 0
+        ? await prisma.orderItemAddon.findMany({
+            where: { orderItemId: { in: orderItemIds } },
+            include: { addon: { select: { id: true, name: true, price: true } } },
+        })
+        : [];
+    const addonMap = new Map();
+    for (const row of addonRows) {
+        if (!addonMap.has(row.orderItemId)) addonMap.set(row.orderItemId, []);
+        addonMap.get(row.orderItemId).push({ id: row.addon.id, name: row.addon.name, unitPrice: Number(row.addon.price) });
+    }
+
     return {
         id: order.id,
         orderNumber: order.orderNumber,
@@ -2299,6 +2413,8 @@ const getUnifiedOrder = async (id) => {
             unitPrice: Number(i.unitPrice),
             totalPrice: Number(i.totalPrice),
             status: i.status,
+            notes: i.notes || null,
+            addons: addonMap.get(i.id) || [],
         })),
 
         pricing: {
@@ -2313,6 +2429,7 @@ const getUnifiedOrder = async (id) => {
         payment: {
             method: order.paymentMethod,
             status: order.paymentStatus,
+            paidAmount,
         },
 
         delegate: order.delegate,

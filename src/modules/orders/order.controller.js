@@ -299,9 +299,11 @@ const handOverOrderToDelegate = async (req, res, next) => {
 
 const closeTableOrder = async (req, res, next) => {
     try {
+        const { paymentMethod, amountPaid } = req.body;
         const result = await orderService.closeTableOrder(
             req.params.tableNumber,
-            req.user?.userId
+            req.user?.userId,
+            { paymentMethod, amountPaid }
         );
 
         for (const order of result.orders) {
@@ -311,8 +313,15 @@ const closeTableOrder = async (req, res, next) => {
         await logAudit(req, "orders", "edit_order", `Table ${req.params.tableNumber} closed`);
         return res.status(200).json({
             success: true,
-            message: "Table closed successfully",
-            data: result,
+            message: "تم تحصيل الفاتورة وإغلاق الطاولة",
+            data: {
+                tableNumber: Number(req.params.tableNumber),
+                sessionId: result.sessionId,
+                ordersCount: result.ordersCount,
+                paymentStatus: result.paymentStatus,
+                total: result.total,
+                closedAt: result.closedAt,
+            },
         });
     } catch (error) {
         next(error);
