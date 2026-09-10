@@ -756,6 +756,9 @@ enum ServiceRequestType {
   WAITER
   BILL
   HELP
+  WATER
+  UTENSILS
+  CLEANING
 }
 
 enum ServiceRequestStatus {
