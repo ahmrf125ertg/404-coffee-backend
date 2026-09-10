@@ -124,8 +124,18 @@ const getSupplierOptions = async (req, res, next) => {
 // Get supplier transactions
 const getSupplierTransactions = async (req, res, next) => {
     try {
-        const { items, summary } = await supplierService.getSupplierTransactions(req.params.id, req.query);
-        res.status(200).json({ success: true, data: items, summary });
+        const { items, total, summary, page, pageSize } = await supplierService.getSupplierTransactions(req.params.id, req.query);
+        res.status(200).json({
+            success: true,
+            data: items,
+            summary,
+            pagination: {
+                page,
+                pageSize,
+                total,
+                totalPages: Math.ceil(total / pageSize),
+            },
+        });
     } catch (error) { next(error); }
 };
 

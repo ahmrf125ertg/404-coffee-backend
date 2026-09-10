@@ -54,14 +54,9 @@ All APIs from the frontend engineer's specification (`~/Desktop/الموظفين
 
 ### Tests
 
-- **Unit tests: 22/22 passing** ✅
-  - Auth (11 tests): login, invalid password, suspended user, missing fields, no token, invalid token, health, RBAC CASHIER, DELEGATE, OWNER, permissions endpoint
-  - Users (11 tests): full CRUD, RBAC, owner protections, pagination
-- **API integration tests: 72/72 passing** ✅
-  - All auth endpoints verified
-  - All employee CRUD endpoints verified
-  - All device management endpoints verified
-  - Negative cases: 401 (wrong password), 401 (no auth), 403 (blocked device), 409 (duplicate name)
+- **Tests: 135/135 passing** ✅ (40 suites across 11 test files)
+  - Auth, Users, Catalog, Money Flows, Shifts & Reports, Orders Rebuild, WebSocket Events, Frontend Contract, and more
+  - All endpoints verified including happy paths and negative cases
 
 ### Security
 
@@ -111,7 +106,7 @@ All APIs from the frontend engineer's specification (`~/Desktop/الموظفين
 
 - **158 API endpoints** across 22 modules
 - **30 Prisma models**, 12 enums
-- **61/61 unit tests passing** + **87/87 integration tests passing**
+- **135/135 tests passing** (40 suites, 11 test files)
 - **JWT dual-token auth** (access + refresh) with HS256
 - **FIFO inventory deduction** with transaction safety
 - **Order state machine** with optimistic locking

@@ -410,17 +410,15 @@ const getTopProducts = async ({ limit = 6, days = 30 } = {}) => {
   const since = new Date();
   since.setDate(since.getDate() - Number(days));
 
-  const topItems = await prisma.orderItem.groupBy({
-    by: ["productId"],
-    where: {
-      order: {
-        createdAt: { gte: since },
-      },
-    },
-    _count: { id: true },
-    orderBy: { _count: { id: "desc" } },
-    take: Number(limit),
-  });
+  const topItems = await prisma.$queryRaw`
+    SELECT "productId", COUNT(DISTINCT "orderId")::int AS "orderCount"
+    FROM "order_items" oi
+    JOIN "orders" o ON o.id = oi."orderId"
+    WHERE o."createdAt" >= ${since}
+    GROUP BY "productId"
+    ORDER BY "orderCount" DESC
+    LIMIT ${Number(limit)}
+  `;
 
   const productIds = topItems.map((t) => t.productId);
   if (productIds.length === 0) return [];
@@ -450,7 +448,7 @@ const getTopProducts = async ({ limit = 6, days = 30 } = {}) => {
         name: p.name,
         image: p.image,
         sellingPrice: p.sizes[0] ? Number(p.sizes[0].finalPrice) : 0,
-        totalOrders: t._count?.id || 0,
+        totalOrders: t.orderCount || 0,
       };
     })
     .filter(Boolean);
@@ -1323,6 +1321,8 @@ const createProductConfiguration = async (configJson, imageFile) => {
     fs.copyFileSync(imageFile.path, dest);
     imagePath = `/uploads/products/${filename}`;
     await prisma.product.update({ where: { id: result.id }, data: { image: imagePath } });
+    // Clean up multer temp file
+    try { if (imageFile.path && fs.existsSync(imageFile.path)) fs.unlinkSync(imageFile.path); } catch (_) {}
   }
 
   const fullProduct = await prisma.product.findUnique({
@@ -1510,6 +1510,8 @@ const updateProductConfiguration = async (productId, configJson, imageFile) => {
     const oldPath = path.join(__dirname, "../..", existing.image);
     if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
   }
+  // Clean up multer temp file
+  try { if (imageFile && imageFile.path && fs.existsSync(imageFile.path)) fs.unlinkSync(imageFile.path); } catch (_) {}
 
   const fullProduct = await prisma.product.findUnique({
     where: { id: pId },
@@ -1540,6 +1542,8 @@ const updateProductConfiguration = async (productId, configJson, imageFile) => {
       const newPath = path.join(__dirname, "../..", imagePath);
       if (fs.existsSync(newPath)) fs.unlinkSync(newPath);
     }
+    // Clean up multer temp file on failure
+    try { if (imageFile && imageFile.path && fs.existsSync(imageFile.path)) fs.unlinkSync(imageFile.path); } catch (_) {}
     throw txError;
   }
 };

@@ -360,36 +360,42 @@ const addBatch = async (rawMaterialId, batchData) => {
         throw error;
     }
 
-    // Get next batch number
-    const lastBatch = await prisma.rawMaterialBatch.findFirst({
-        where: { rawMaterialId: Number(rawMaterialId) },
-        orderBy: { id: "desc" },
-    });
-    const nextBatchNum = lastBatch
-        ? (parseInt(lastBatch.batchNumber?.replace(/\D/g, "") || "0") + 1)
-        : 1;
-    const batchNumber = `B-${String(nextBatchNum).padStart(2, "0")}`;
+    // Use a transaction with row-level lock to prevent priority race conditions
+    const batch = await prisma.$transaction(async (tx) => {
+        // Lock rows to get accurate max priority (prevents concurrent race)
+        const lastBatch = await tx.$queryRaw`
+            SELECT "withdrawalPriority" FROM "raw_material_batches"
+            WHERE "rawMaterialId" = ${Number(rawMaterialId)}
+            ORDER BY "withdrawalPriority" DESC NULLS LAST
+            FOR UPDATE
+            LIMIT 1
+        `;
+        const nextPriority = (lastBatch[0]?.withdrawalPriority || 0) + 1;
 
-    // Get next withdrawal priority
-    const maxPriority = await prisma.rawMaterialBatch.aggregate({
-        where: { rawMaterialId: Number(rawMaterialId) },
-        _max: { withdrawalPriority: true },
-    });
-    const nextPriority = (maxPriority._max.withdrawalPriority || 0) + 1;
+        // Get next batch number
+        const lastBatchByNumber = await tx.rawMaterialBatch.findFirst({
+            where: { rawMaterialId: Number(rawMaterialId) },
+            orderBy: { id: "desc" },
+        });
+        const nextBatchNum = lastBatchByNumber
+            ? (parseInt(lastBatchByNumber.batchNumber?.replace(/\D/g, "") || "0") + 1)
+            : 1;
+        const batchNumber = `B-${String(nextBatchNum).padStart(2, "0")}`;
 
-    const batch = await prisma.rawMaterialBatch.create({
-        data: {
-            rawMaterialId: Number(rawMaterialId),
-            quantity,
-            pricePerUnit,
-            initialQuantity: quantity,
-            batchNumber,
-            withdrawalPriority: nextPriority,
-            expiryDate: expiryDate
-                ? new Date(expiryDate)
-                : null,
-            addedAt: addedAt ? new Date(addedAt) : new Date(),
-        },
+        return tx.rawMaterialBatch.create({
+            data: {
+                rawMaterialId: Number(rawMaterialId),
+                quantity,
+                pricePerUnit,
+                initialQuantity: quantity,
+                batchNumber,
+                withdrawalPriority: nextPriority,
+                expiryDate: expiryDate
+                    ? new Date(expiryDate)
+                    : null,
+                addedAt: addedAt ? new Date(addedAt) : new Date(),
+            },
+        });
     });
 
     return batch;

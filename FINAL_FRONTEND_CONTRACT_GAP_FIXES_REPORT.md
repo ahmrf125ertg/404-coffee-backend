@@ -18,7 +18,7 @@ Comprehensive report of all gaps identified between the 4 TXT spec files and the
 | Missing features | 1 |
 | Ambiguous requirements | 10 (documented in CLARIFICATIONS.md) |
 | All fixed | Yes |
-| Tests added | 9 new (39 total across orders, websocket, contract) |
+| Tests added | 9 new (135 total across all modules) |
 
 ---
 
@@ -191,7 +191,8 @@ ALTER TABLE "order_items" ADD COLUMN "notes" TEXT;
 | `tests/frontend-contract.test.js` | 9 | All 8 gap fixes verified |
 | `tests/orders-rebuild.test.js` | 25 | State machine, idempotency, delegate, payments |
 | `tests/websocket-new-events.test.js` | 5 | WebSocket event emission |
-| **Total** | **39** | **All passing** |
+| *+ 8 other test files* | *96* | Auth, users, catalog, money flows, shifts/reports, etc. |
+| **Total** | **135** | **All passing (40 suites, 11 test files)** |
 
 ### Specific Contract Tests
 

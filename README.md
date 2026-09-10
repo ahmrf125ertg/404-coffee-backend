@@ -172,16 +172,7 @@ node --test --test-concurrency=1 "tests/users.test.js"             # Users tests
 
 ### Current Test Results
 
-| Category | Pass | Fail |
-|----------|------|------|
-| Auth (login, RBAC, permissions) | 11 | 0 |
-| Users (CRUD, RBAC, owner protections) | 11 | 0 |
-| Catalog (customers, suppliers, delegates, inventory, products) | 13 | 0 |
-| Money Flows (sales, purchases, returns, orders) | 14 | 0 |
-| Shifts & Reports (cash drawer, dashboard, reports, warnings, settings, health) | 12 | 0 |
-| **Unit Test Total** | **61** | **0** |
-
-API integration tests: **87/87 pass** (15 Employee/Auth endpoints × happy + negative cases + device lifecycle).
+**135 tests, 40 suites, all passing — across 11 test files.**
 
 ## Deployment
 

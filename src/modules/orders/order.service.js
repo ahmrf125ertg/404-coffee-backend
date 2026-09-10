@@ -1196,6 +1196,8 @@ const updateOrderStatus = async (id, data, userId) => {
 
 // ============================================================
 // Deduct inventory for order (ingredients from raw materials)
+// Consumes across multiple batches by withdrawalPriority (lowest number first).
+// Creates RawMaterialWithdrawal records for full audit trail.
 // ============================================================
 
 const deductInventoryForOrder = async (tx, orderId) => {
@@ -1216,27 +1218,52 @@ const deductInventoryForOrder = async (tx, orderId) => {
             const ingredientQty = Number(ing.quantity) * quantity;
             if (ingredientQty <= 0) continue;
 
-            // Find batch with enough stock (FIFO: oldest first)
-            const batch = await tx.rawMaterialBatch.findFirst({
-                where: { rawMaterialId: ing.rawMaterialId, quantity: { gte: ingredientQty } },
-                orderBy: { addedAt: "asc" },
+            // Fetch all batches ordered by withdrawalPriority (lowest first)
+            const batches = await tx.rawMaterialBatch.findMany({
+                where: { rawMaterialId: ing.rawMaterialId, quantity: { gt: 0 } },
+                orderBy: { withdrawalPriority: "asc" },
             });
 
-            if (!batch) {
+            const totalAvailable = batches.reduce((sum, b) => sum + Number(b.quantity), 0);
+            if (totalAvailable < ingredientQty) {
                 const mat = await tx.rawMaterial.findUnique({ where: { id: ing.rawMaterialId }, select: { name: true } });
                 const matName = mat ? mat.name : `RawMaterial#${ing.rawMaterialId}`;
-                throw httpError(`Insufficient inventory for "${matName}": need ${ingredientQty} but no single batch has enough stock`, 400);
+                throw httpError(`Insufficient inventory for "${matName}": need ${ingredientQty} but only ${totalAvailable} available`, 400);
             }
 
-            await tx.rawMaterialBatch.update({
-                where: { id: batch.id },
-                data: { quantity: { decrement: ingredientQty } },
-            });
-            deductions.push({
-                rawMaterialId: ing.rawMaterialId,
-                batchId: batch.id,
-                deductedQty: ingredientQty,
-            });
+            let remaining = ingredientQty;
+            for (const batch of batches) {
+                if (remaining <= 0) break;
+                const available = Number(batch.quantity);
+                const toDeduct = Math.min(remaining, available);
+
+                await tx.rawMaterialBatch.update({
+                    where: { id: batch.id },
+                    data: { quantity: { decrement: toDeduct } },
+                });
+
+                // Create audit trail record
+                await tx.rawMaterialWithdrawal.create({
+                    data: {
+                        rawMaterialId: ing.rawMaterialId,
+                        batchId: batch.id,
+                        orderId: orderId,
+                        quantity: toDeduct,
+                        unitCost: Number(batch.pricePerUnit),
+                        totalCost: toDeduct * Number(batch.pricePerUnit),
+                        reason: `Auto-deduct for order #${orderId}`,
+                        processedAt: new Date(),
+                    },
+                });
+
+                deductions.push({
+                    rawMaterialId: ing.rawMaterialId,
+                    batchId: batch.id,
+                    deductedQty: toDeduct,
+                });
+
+                remaining -= toDeduct;
+            }
         }
     }
 
@@ -1290,7 +1317,10 @@ const handOverOrderToDelegate = async (orderId, delegateId, userId) => {
     }
 
     // Transition to ASSIGNED_TO_DELEGATE
+    const { guardOrderTransition } = require("./order.transitions");
     const result = await prisma.$transaction(async (tx) => {
+        guardOrderTransition(existingOrder.status, "ASSIGNED_TO_DELEGATE");
+
         const order = await tx.order.update({
             where: { id: orderIdNum },
             data: {
@@ -1356,8 +1386,10 @@ const closeTableOrder = async (tableNumber, userId, paymentData = {}) => {
         const updatedOrders = [];
 
         // Deduct inventory for all orders that haven't had it deducted yet
+        // (ADMIN_POS and TABLE_WAITER orders are auto-deducted at creation;
+        //  only CUSTOMER_WEB orders remain PENDING until table close)
         for (const o of activeOrders) {
-            if (o.status === "PENDING") {
+            if (o.status === "PENDING" || o.status === "CONFIRMED") {
                 await deductInventoryForOrder(tx, o.id);
             }
         }
@@ -1674,42 +1706,71 @@ const createOrderCompletionSale = async (tx, order, userId) => {
 
 // ============================================================
 // Restore inventory for cancelled order
+// Restores to exact batches from which stock was originally deducted,
+// using RawMaterialWithdrawal records as the source of truth.
 // ============================================================
 
 const restoreInventoryForOrder = async (tx, orderId) => {
-    const items = await tx.orderItem.findMany({
+    // Look up original deduction records for this order
+    const withdrawals = await tx.rawMaterialWithdrawal.findMany({
         where: { orderId },
-        include: {
-            productSize: {
-                include: {
-                    ingredients: true,
-                },
-            },
-        },
+        orderBy: { id: "asc" },
     });
 
     const restoredBatches = [];
 
-    for (const item of items) {
-        const quantity = Number(item.quantity);
-        for (const ing of item.productSize.ingredients) {
-            const ingredientQty = Number(ing.quantity) * quantity;
-            // Find the most recent batch with stock
-            const batch = await tx.rawMaterialBatch.findFirst({
-                where: { rawMaterialId: ing.rawMaterialId, quantity: { gt: 0 } },
-                orderBy: { addedAt: "desc" },
-            });
+    for (const w of withdrawals) {
+        const batch = await tx.rawMaterialBatch.findUnique({ where: { id: w.batchId } });
+        if (!batch) continue;
 
-            if (batch) {
-                await tx.rawMaterialBatch.update({
-                    where: { id: batch.id },
-                    data: { quantity: { increment: ingredientQty } },
+        const restoreQty = Number(w.quantity);
+
+        await tx.rawMaterialBatch.update({
+            where: { id: batch.id },
+            data: { quantity: { increment: restoreQty } },
+        });
+
+        // Remove the original withdrawal record since stock is restored
+        await tx.rawMaterialWithdrawal.delete({ where: { id: w.id } });
+
+        restoredBatches.push({
+            rawMaterialId: w.rawMaterialId,
+            batchId: batch.id,
+            restoredQty: restoreQty,
+        });
+    }
+
+    // Fallback: if no withdrawal records exist (legacy orders), restore by ingredients
+    if (restoredBatches.length === 0) {
+        const items = await tx.orderItem.findMany({
+            where: { orderId },
+            include: {
+                productSize: {
+                    include: { ingredients: true },
+                },
+            },
+        });
+
+        for (const item of items) {
+            const quantity = Number(item.quantity);
+            for (const ing of item.productSize.ingredients) {
+                const ingredientQty = Number(ing.quantity) * quantity;
+                const batch = await tx.rawMaterialBatch.findFirst({
+                    where: { rawMaterialId: ing.rawMaterialId, quantity: { gt: 0 } },
+                    orderBy: { withdrawalPriority: "asc" },
                 });
-                restoredBatches.push({
-                    rawMaterialId: ing.rawMaterialId,
-                    batchId: batch.id,
-                    restoredQty: ingredientQty,
-                });
+
+                if (batch) {
+                    await tx.rawMaterialBatch.update({
+                        where: { id: batch.id },
+                        data: { quantity: { increment: ingredientQty } },
+                    });
+                    restoredBatches.push({
+                        rawMaterialId: ing.rawMaterialId,
+                        batchId: batch.id,
+                        restoredQty: ingredientQty,
+                    });
+                }
             }
         }
     }

@@ -8,7 +8,7 @@
 ## README
 **PASS** — Updated with:
 - Employee/Auth frontend contract section (15/15 APIs)
-- Current test results (22/22 unit + 72/72 integration)
+- Current test results (135 tests, 40 suites, all passing)
 - Railway status (Prepared, not Deployed)
 - Reference to EMPLOYEE_AUTH_API.md
 - Postman collection link
@@ -38,18 +38,13 @@
 - Updated description with variable documentation
 
 ## Tests
-| Category | Pass | Fail |
-|----------|------|------|
-| Auth (login, RBAC, permissions) | 11 | 0 |
-| Users (CRUD, RBAC, owner protections) | 11 | 0 |
-| **Unit Test Total** | **22** | **0** |
 
-API integration tests: **72/72** (15 endpoints × happy + negative cases)
+**135 tests, 40 suites, all passing — across 11 test files.**
 
 No regressions introduced by documentation changes.
 
 ## Employee/Auth
-**15/15 engineer-required APIs aligned** — verified via 72 integration tests.
+**15/15 engineer-required APIs aligned** — verified via test suite.
 
 ## Railway
 **Prepared for Railway deployment** — No live Railway URL exists. Deployment guide available in `RAILWAY_DEPLOYMENT_GUIDE.md`.

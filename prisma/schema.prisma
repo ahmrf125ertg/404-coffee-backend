@@ -80,6 +80,7 @@ model RawMaterialWithdrawal {
   id            Int              @id @default(autoincrement())
   rawMaterialId Int
   batchId       Int
+  orderId       Int?
   quantity      Decimal
   unitCost      Decimal
   totalCost     Decimal
@@ -90,9 +91,11 @@ model RawMaterialWithdrawal {
   updatedAt     DateTime         @updatedAt
   rawMaterial   RawMaterial      @relation(fields: [rawMaterialId], references: [id], onDelete: Cascade)
   batch         RawMaterialBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  order         Order?           @relation(fields: [orderId], references: [id], onDelete: SetNull)
 
   @@index([rawMaterialId])
   @@index([batchId])
+  @@index([orderId])
   @@index([processedAt])
   @@map("raw_material_withdrawals")
 }
@@ -364,6 +367,7 @@ model Order {
   customer        Customer?     @relation(fields: [customerId], references: [id])
   delegate        Delegate?     @relation(fields: [delegateId], references: [id])
   sales           Sale?         @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  withdrawals     RawMaterialWithdrawal[]
 
   @@index([customerId])
   @@index([delegateId])

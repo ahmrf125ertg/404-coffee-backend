@@ -57,15 +57,25 @@ const requireOwnerOr = (req, res, next) => {
 const getUsers = async (req, res, next) => {
   try {
     const { page, pageSize, skip, take } = parsePagination(req.query);
+    const { search } = req.query;
+
+    const where = {};
+    if (search && search.trim()) {
+      where.OR = [
+        { name: { contains: search.trim(), mode: "insensitive" } },
+        { position: { contains: search.trim(), mode: "insensitive" } },
+      ];
+    }
 
     const [users, total] = await Promise.all([
       prisma.user.findMany({
+        where,
         select: USER_SELECT,
         orderBy: { createdAt: "desc" },
         skip,
         take,
       }),
-      prisma.user.count(),
+      prisma.user.count({ where }),
     ]);
 
     res.status(200).json({
@@ -392,9 +402,12 @@ const deleteUser = async (req, res, next) => {
       }
     }
 
-    await prisma.user.delete({ where: { id: userId } });
+    await prisma.user.update({
+      where: { id: userId },
+      data: { status: "SUSPENDED" },
+    });
 
-    await logAudit(req, "users", "delete_user", `Deleted user #${req.params.id}`);
+    await logAudit(req, "users", "delete_user", `Suspended user #${req.params.id} (soft delete)`);
 
     res.status(200).json({
       success: true,

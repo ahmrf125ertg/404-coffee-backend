@@ -313,7 +313,7 @@ const authPaths = {
               required: ["name", "password"],
               properties: {
                 name: { type: "string", example: "Admin" },
-                password: { type: "string", example: "root123" },
+                password: { type: "string", example: "YOUR_PASSWORD" },
               },
             },
           },
@@ -394,7 +394,7 @@ const usersPaths = {
               required: ["name", "password", "position", "role"],
               properties: {
                 name: { type: "string", example: "Mohamed" },
-                password: { type: "string", example: "123456" },
+                password: { type: "string", example: "YOUR_PASSWORD" },
                 position: { type: "string", example: "CASHIER" },
                 role: {
                   type: "string",

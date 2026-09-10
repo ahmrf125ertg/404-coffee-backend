@@ -548,13 +548,16 @@ const loginUser = async ({ name, username, password, device }) => {
   const expiresInSeconds = parseExpiresIn(jwtExpiresIn);
   const refreshExpiresInSeconds = parseExpiresIn(jwtRefreshExpiresIn);
 
+  const employeeObj = {
+    id: user.id,
+    name: user.name,
+    username: user.name,
+    image: null,
+  };
+
   return {
-    employee: {
-      id: user.id,
-      name: user.name,
-      username: user.name,
-      image: null,
-    },
+    employee: employeeObj,
+    user: employeeObj,
     role,
     permissions,
     notifications: [],
@@ -595,13 +598,16 @@ const getMe = async (userId) => {
     const role = buildRole(user.role);
     const permissions = buildPermissions(user.role);
 
+    const employeeObj = {
+        id: user.id,
+        name: user.name,
+        username: user.name,
+        image: null,
+    };
+
     return {
-        employee: {
-            id: user.id,
-            name: user.name,
-            username: user.name,
-            image: null,
-        },
+        employee: employeeObj,
+        user: employeeObj,
         role,
         permissions,
         notifications: [],

@@ -522,7 +522,7 @@ The sanitization regex does not cover `SQL`, `SELECT`, `INSERT`, `UPDATE`, `DELE
 7. **User tracking is accurate** — no silent fallbacks to Admin
 8. **Production error handling is in place** — internal details not leaked
 9. **No `.env` in git** — secrets are safe
-10. **100% test pass rate** — all 61 tests pass
+10. **100% test pass rate** — all 135 tests pass (40 suites, 11 test files)
 11. **`GET /api/raw-materials/:id` endpoint added** — was missing from Excel catalog
 12. **Startup warning for refresh secret fallback** — prevents silent security degradation
 

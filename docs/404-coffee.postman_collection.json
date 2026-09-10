@@ -1,21 +1,22 @@
 {
   "info": {
     "name": "404 Coffee Backend API",
-    "description": "Full API collection for 404 Coffee Backend\n\n## Setup\n1. Start Backend: `npm run dev` (port 5000)\n2. Login from Auth → Login (Admin)\n3. JWT is auto-saved to `{{token}}` variable\n4. All other endpoints will work automatically\n\n## Variables\n- `base_url` — Backend URL (default: http://localhost:5000)\n- `token` — Admin JWT (auto-set by Login)\n- `cashier_token` — Cashier JWT (auto-set by Cashier Login)\n- `employeeId` — Set after creating/getting a user\n- `deviceId` — Set after listing devices",
+    "description": "Full API collection for 404 Coffee Backend\n\n## Setup\n1. Start Backend: `npm run dev` (port 3000)\n2. Login from Auth → Login (Admin)\n3. JWT is auto-saved to `{{accessToken}}` variable\n4. All other endpoints will work automatically\n\n## Variables\n- `baseUrl` — Backend URL (default: http://localhost:3000)\n- `accessToken` — Admin JWT (auto-set by Login)\n- `refreshToken` — Refresh token (auto-set by Login)\n- `tableToken` — Table session token (auto-set by session open)\n- `trackingToken` — Order tracking token\n- `employeeId` — Set after creating/getting a user\n- `deviceId` — Set after listing devices",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    { "key": "base_url", "value": "http://localhost:5000" },
-    { "key": "token", "value": "" },
-    { "key": "cashier_token", "value": "" },
+    { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "accessToken", "value": "" },
     { "key": "refreshToken", "value": "" },
+    { "key": "tableToken", "value": "" },
+    { "key": "trackingToken", "value": "" },
     { "key": "employeeId", "value": "" },
     { "key": "deviceId", "value": "" }
   ],
   "auth": {
     "type": "bearer",
     "bearer": [
-      { "key": "token", "value": "{{token}}", "type": "string" }
+      { "key": "token", "value": "{{accessToken}}", "type": "string" }
     ]
   },
   "item": [
@@ -24,23 +25,23 @@
       "item": [
         {
           "name": "Health Check",
-          "request": { "method": "GET", "url": "{{base_url}}/api/health" }
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/health" }
         },
         {
           "name": "Health Ready",
-          "request": { "method": "GET", "url": "{{base_url}}/api/health/ready" }
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/health/ready" }
         },
         {
           "name": "Health Live",
-          "request": { "method": "GET", "url": "{{base_url}}/api/health/live" }
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/health/live" }
         },
         {
           "name": "Swagger JSON",
-          "request": { "method": "GET", "url": "{{base_url}}/api/docs.json" }
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/docs.json" }
         },
         {
           "name": "Swagger UI",
-          "request": { "method": "GET", "url": "{{base_url}}/api/docs" }
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/docs" }
         }
       ]
     },
@@ -56,9 +57,9 @@
                 "exec": [
                   "var res = pm.response.json();",
                   "if (res.success && res.data && res.data.auth) {",
-                  "    pm.collectionVariables.set('token', res.data.auth.access_token);",
+                  "    pm.collectionVariables.set('accessToken', res.data.auth.access_token);",
                   "    pm.collectionVariables.set('refreshToken', res.data.auth.refresh_token);",
-                  "    console.log('Token saved!');",
+                  "    console.log('Tokens saved!');",
                   "}"
                 ],
                 "type": "text/javascript"
@@ -67,11 +68,11 @@
           ],
           "request": {
             "method": "POST",
-            "url": "{{base_url}}/api/auth/login",
+            "url": "{{baseUrl}}/api/auth/login",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Admin\",\n  \"password\": \"root123\"\n}"
+              "raw": "{\n  \"name\": \"Admin\",\n  \"password\": \"YOUR_PASSWORD\"\n}"
             }
           }
         },
@@ -94,11 +95,11 @@
           ],
           "request": {
             "method": "POST",
-            "url": "{{base_url}}/api/auth/login",
+            "url": "{{baseUrl}}/api/auth/login",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Cashier1\",\n  \"password\": \"123456\"\n}"
+              "raw": "{\n  \"name\": \"Cashier1\",\n  \"password\": \"YOUR_PASSWORD\"\n}"
             }
           }
         },
@@ -106,7 +107,7 @@
           "name": "Get Me",
           "request": {
             "method": "GET",
-            "url": "{{base_url}}/api/auth/me"
+            "url": "{{baseUrl}}/api/auth/me"
           }
         },
         {
@@ -118,7 +119,7 @@
                 "exec": [
                   "var res = pm.response.json();",
                   "if (res.success && res.data && res.data.access_token) {",
-                  "    pm.collectionVariables.set('token', res.data.access_token);",
+                  "    pm.collectionVariables.set('accessToken', res.data.access_token);",
                   "    pm.collectionVariables.set('refreshToken', res.data.refresh_token);",
                   "    console.log('Tokens refreshed!');",
                   "}"
@@ -129,7 +130,7 @@
           ],
           "request": {
             "method": "POST",
-            "url": "{{base_url}}/api/auth/refresh",
+            "url": "{{baseUrl}}/api/auth/refresh",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
@@ -141,7 +142,7 @@
           "name": "Logout",
           "request": {
             "method": "POST",
-            "url": "{{base_url}}/api/auth/logout",
+            "url": "{{baseUrl}}/api/auth/logout",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": { "mode": "raw", "raw": "{}" }
           }
@@ -150,9 +151,21 @@
           "name": "Logout All Devices",
           "request": {
             "method": "POST",
-            "url": "{{base_url}}/api/auth/logout-all",
+            "url": "{{baseUrl}}/api/auth/logout-all",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": { "mode": "raw", "raw": "{}" }
+          }
+        },
+        {
+          "name": "Register Device",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/auth/devices/register",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"deviceName\": \"My Phone\",\n  \"deviceType\": \"MOBILE\"\n}"
+            }
           }
         }
       ]
@@ -165,8 +178,8 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{base_url}}/api/users?page=1&pageSize=20",
-              "host": ["{{base_url}}"],
+              "raw": "{{baseUrl}}/api/users?page=1&pageSize=20",
+              "host": ["{{baseUrl}}"],
               "path": ["api", "users"],
               "query": [
                 { "key": "page", "value": "1" },
@@ -179,14 +192,14 @@
           "name": "Get User by ID",
           "request": {
             "method": "GET",
-            "url": "{{base_url}}/api/users/{{employeeId}}"
+            "url": "{{baseUrl}}/api/users/{{employeeId}}"
           }
         },
         {
           "name": "Get User Permissions",
           "request": {
             "method": "GET",
-            "url": "{{base_url}}/api/users/{{employeeId}}/permissions"
+            "url": "{{baseUrl}}/api/users/{{employeeId}}/permissions"
           }
         },
         {
@@ -208,7 +221,7 @@
           ],
           "request": {
             "method": "POST",
-            "url": "{{base_url}}/api/users",
+            "url": "{{baseUrl}}/api/users",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
@@ -234,7 +247,7 @@
           ],
           "request": {
             "method": "POST",
-            "url": "{{base_url}}/api/users",
+            "url": "{{baseUrl}}/api/users",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
@@ -246,7 +259,7 @@
           "name": "Update User",
           "request": {
             "method": "PUT",
-            "url": "{{base_url}}/api/users/{{employeeId}}",
+            "url": "{{baseUrl}}/api/users/{{employeeId}}",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
@@ -258,7 +271,7 @@
           "name": "Update User Page Access",
           "request": {
             "method": "PUT",
-            "url": "{{base_url}}/api/users/{{employeeId}}/page-access",
+            "url": "{{baseUrl}}/api/users/{{employeeId}}/page-access",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
@@ -270,7 +283,7 @@
           "name": "Suspend User",
           "request": {
             "method": "PATCH",
-            "url": "{{base_url}}/api/users/{{employeeId}}/status",
+            "url": "{{baseUrl}}/api/users/{{employeeId}}/status",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
@@ -282,7 +295,7 @@
           "name": "Resume User",
           "request": {
             "method": "PATCH",
-            "url": "{{base_url}}/api/users/{{employeeId}}/status",
+            "url": "{{baseUrl}}/api/users/{{employeeId}}/status",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
@@ -294,14 +307,14 @@
           "name": "Get User Attendance",
           "request": {
             "method": "GET",
-            "url": "{{base_url}}/api/users/{{employeeId}}/attendance"
+            "url": "{{baseUrl}}/api/users/{{employeeId}}/attendance"
           }
         },
         {
           "name": "Delete User",
           "request": {
             "method": "DELETE",
-            "url": "{{base_url}}/api/users/{{employeeId}}"
+            "url": "{{baseUrl}}/api/users/{{employeeId}}"
           }
         }
       ]
@@ -313,28 +326,28 @@
           "name": "List Employee Devices",
           "request": {
             "method": "GET",
-            "url": "{{base_url}}/api/employees/{{employeeId}}/devices"
+            "url": "{{baseUrl}}/api/employees/{{employeeId}}/devices"
           }
         },
         {
           "name": "Approve Device",
           "request": {
             "method": "PUT",
-            "url": "{{base_url}}/api/employees/{{employeeId}}/devices/{{deviceId}}/approve"
+            "url": "{{baseUrl}}/api/employees/{{employeeId}}/devices/{{deviceId}}/approve"
           }
         },
         {
           "name": "Reject Device",
           "request": {
             "method": "PUT",
-            "url": "{{base_url}}/api/employees/{{employeeId}}/devices/{{deviceId}}/reject"
+            "url": "{{baseUrl}}/api/employees/{{employeeId}}/devices/{{deviceId}}/reject"
           }
         },
         {
           "name": "Block Device",
           "request": {
             "method": "PUT",
-            "url": "{{base_url}}/api/employees/{{employeeId}}/devices/{{deviceId}}/block"
+            "url": "{{baseUrl}}/api/employees/{{employeeId}}/devices/{{deviceId}}/block"
           }
         }
       ]
@@ -347,8 +360,8 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{base_url}}/api/customers?page=1&pageSize=20",
-              "host": ["{{base_url}}"],
+              "raw": "{{baseUrl}}/api/customers?page=1&pageSize=20",
+              "host": ["{{baseUrl}}"],
               "path": ["api", "customers"],
               "query": [
                 { "key": "page", "value": "1" },
@@ -358,14 +371,35 @@
           }
         },
         {
+          "name": "Lookup Customer",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/customers/lookup?phone=01012345678",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "customers", "lookup"],
+              "query": [
+                { "key": "phone", "value": "01012345678" }
+              ]
+            }
+          }
+        },
+        {
           "name": "Get Customer by ID",
-          "request": { "method": "GET", "url": "{{base_url}}/api/customers/1" }
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/customers/1" }
+        },
+        {
+          "name": "Get Customer Orders",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/customers/1/orders"
+          }
         },
         {
           "name": "Create Customer",
           "request": {
             "method": "POST",
-            "url": "{{base_url}}/api/customers",
+            "url": "{{baseUrl}}/api/customers",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
@@ -377,14 +411,26 @@
           "name": "Update Customer",
           "request": {
             "method": "PUT",
-            "url": "{{base_url}}/api/customers/1",
+            "url": "{{baseUrl}}/api/customers/1",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": { "mode": "raw", "raw": "{\n  \"name\": \"عميل محدث\"\n}" }
           }
         },
         {
+          "name": "Merge Customers",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/customers/1/merge",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mergeIntoId\": 2\n}"
+            }
+          }
+        },
+        {
           "name": "Delete Customer",
-          "request": { "method": "DELETE", "url": "{{base_url}}/api/customers/1" }
+          "request": { "method": "DELETE", "url": "{{baseUrl}}/api/customers/1" }
         }
       ]
     },
@@ -396,8 +442,8 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{base_url}}/api/suppliers?page=1&pageSize=20",
-              "host": ["{{base_url}}"],
+              "raw": "{{baseUrl}}/api/suppliers?page=1&pageSize=20",
+              "host": ["{{baseUrl}}"],
               "path": ["api", "suppliers"],
               "query": [
                 { "key": "page", "value": "1" },
@@ -407,14 +453,18 @@
           }
         },
         {
+          "name": "Get Supplier Options",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/suppliers/options" }
+        },
+        {
           "name": "Get Supplier by ID",
-          "request": { "method": "GET", "url": "{{base_url}}/api/suppliers/1" }
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/suppliers/1" }
         },
         {
           "name": "Create Supplier",
           "request": {
             "method": "POST",
-            "url": "{{base_url}}/api/suppliers",
+            "url": "{{baseUrl}}/api/suppliers",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
@@ -426,14 +476,41 @@
           "name": "Update Supplier",
           "request": {
             "method": "PUT",
-            "url": "{{base_url}}/api/suppliers/1",
+            "url": "{{baseUrl}}/api/suppliers/1",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": { "mode": "raw", "raw": "{\n  \"name\": \"مورد محدث\"\n}" }
           }
         },
         {
           "name": "Delete Supplier",
-          "request": { "method": "DELETE", "url": "{{base_url}}/api/suppliers/1" }
+          "request": { "method": "DELETE", "url": "{{baseUrl}}/api/suppliers/1" }
+        },
+        {
+          "name": "Get Supplier Transactions",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/suppliers/1/transactions?page=1&pageSize=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "suppliers", "1", "transactions"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "pageSize", "value": "20" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Supplier Transaction",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/suppliers/1/transactions",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"PAYMENT\",\n  \"amount\": 5000,\n  \"description\": \"Partial payment for batch\"\n}"
+            }
+          }
         }
       ]
     },
@@ -445,8 +522,8 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{base_url}}/api/delegates?page=1&pageSize=20",
-              "host": ["{{base_url}}"],
+              "raw": "{{baseUrl}}/api/delegates?page=1&pageSize=20",
+              "host": ["{{baseUrl}}"],
               "path": ["api", "delegates"],
               "query": [
                 { "key": "page", "value": "1" },
@@ -456,14 +533,18 @@
           }
         },
         {
+          "name": "Get Delegate Options",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/delegates/options" }
+        },
+        {
           "name": "Get Delegate by ID",
-          "request": { "method": "GET", "url": "{{base_url}}/api/delegates/1" }
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/delegates/1" }
         },
         {
           "name": "Create Delegate",
           "request": {
             "method": "POST",
-            "url": "{{base_url}}/api/delegates",
+            "url": "{{baseUrl}}/api/delegates",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
@@ -472,17 +553,43 @@
           }
         },
         {
+          "name": "Update Delegate",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/delegates/1",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"مندوب محدث\"\n}"
+            }
+          }
+        },
+        {
           "name": "Update Delegate Status",
           "request": {
             "method": "PATCH",
-            "url": "{{base_url}}/api/delegates/1/status",
+            "url": "{{baseUrl}}/api/delegates/1/status",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": { "mode": "raw", "raw": "{\n  \"status\": \"UNAVAILABLE\"\n}" }
           }
         },
         {
           "name": "Delete Delegate",
-          "request": { "method": "DELETE", "url": "{{base_url}}/api/delegates/1" }
+          "request": { "method": "DELETE", "url": "{{baseUrl}}/api/delegates/1" }
+        },
+        {
+          "name": "Get Delegate Orders",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/delegates/1/orders"
+          }
+        },
+        {
+          "name": "Get Delegate Collections",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/delegates/1/collections"
+          }
         }
       ]
     },
@@ -494,8 +601,8 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{base_url}}/api/raw-materials?page=1&pageSize=20",
-              "host": ["{{base_url}}"],
+              "raw": "{{baseUrl}}/api/raw-materials?page=1&pageSize=20",
+              "host": ["{{baseUrl}}"],
               "path": ["api", "raw-materials"],
               "query": [
                 { "key": "page", "value": "1" },
@@ -505,18 +612,37 @@
           }
         },
         {
-          "name": "Get Raw Material by ID",
-          "request": { "method": "GET", "url": "{{base_url}}/api/raw-materials/1" }
+          "name": "Get Raw Material Options",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/raw-materials/options" }
         },
         {
-          "name": "Get Raw Material Options",
-          "request": { "method": "GET", "url": "{{base_url}}/api/raw-materials/options" }
+          "name": "Get Return Options",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/raw-materials/return-options" }
+        },
+        {
+          "name": "Get Withdrawals (all)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/raw-materials/withdrawals?page=1&pageSize=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "raw-materials", "withdrawals"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "pageSize", "value": "20" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Raw Material by ID",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/raw-materials/1" }
         },
         {
           "name": "Create Raw Material",
           "request": {
             "method": "POST",
-            "url": "{{base_url}}/api/raw-materials",
+            "url": "{{baseUrl}}/api/raw-materials",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
@@ -525,10 +651,17 @@
           }
         },
         {
+          "name": "Get Raw Material Batches",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/raw-materials/1/batches"
+          }
+        },
+        {
           "name": "Add Batch",
           "request": {
             "method": "POST",
-            "url": "{{base_url}}/api/raw-materials/1/batches",
+            "url": "{{baseUrl}}/api/raw-materials/1/batches",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
@@ -537,17 +670,57 @@
           }
         },
         {
+          "name": "Update Batch",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/raw-materials/1/batches/1",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantity\": 25,\n  \"pricePerUnit\": 30\n}"
+            }
+          }
+        },
+        {
+          "name": "Delete Batch",
+          "request": { "method": "DELETE", "url": "{{baseUrl}}/api/raw-materials/1/batches/1" }
+        },
+        {
+          "name": "Update Batch Withdrawal Priorities",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/raw-materials/1/batches-priority",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"priorities\": [\n    { \"batchId\": 1, \"priority\": 1 },\n    { \"batchId\": 2, \"priority\": 2 }\n  ]\n}"
+            }
+          }
+        },
+        {
+          "name": "Create Withdrawal",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/raw-materials/1/withdrawals",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantity\": 5,\n  \"reason\": \"Production usage\"\n}"
+            }
+          }
+        },
+        {
           "name": "Update Raw Material",
           "request": {
             "method": "PUT",
-            "url": "{{base_url}}/api/raw-materials/1",
+            "url": "{{baseUrl}}/api/raw-materials/1",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": { "mode": "raw", "raw": "{\n  \"minStockAlert\": 10\n}" }
           }
         },
         {
           "name": "Delete Raw Material",
-          "request": { "method": "DELETE", "url": "{{base_url}}/api/raw-materials/1" }
+          "request": { "method": "DELETE", "url": "{{baseUrl}}/api/raw-materials/1" }
         }
       ]
     },
@@ -555,12 +728,47 @@
       "name": "7 - Products",
       "item": [
         {
+          "name": "List Categories",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/products/categories"
+          }
+        },
+        {
+          "name": "Create Category",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/products/categories",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Hot Drinks\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Update Category",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/products/categories/1",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Hot Beverages\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Delete Category",
+          "request": { "method": "DELETE", "url": "{{baseUrl}}/api/products/categories/1" }
+        },
+        {
           "name": "List Products",
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{base_url}}/api/products?page=1&pageSize=20",
-              "host": ["{{base_url}}"],
+              "raw": "{{baseUrl}}/api/products?page=1&pageSize=20",
+              "host": ["{{baseUrl}}"],
               "path": ["api", "products"],
               "query": [
                 { "key": "page", "value": "1" },
@@ -571,13 +779,13 @@
         },
         {
           "name": "Get Product by ID",
-          "request": { "method": "GET", "url": "{{base_url}}/api/products/1" }
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/products/1" }
         },
         {
           "name": "Create Product",
           "request": {
             "method": "POST",
-            "url": "{{base_url}}/api/products",
+            "url": "{{baseUrl}}/api/products",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
@@ -586,10 +794,17 @@
           }
         },
         {
+          "name": "Get Product Sizes",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/products/1/sizes"
+          }
+        },
+        {
           "name": "Add Product Size",
           "request": {
             "method": "POST",
-            "url": "{{base_url}}/api/products/1/sizes",
+            "url": "{{baseUrl}}/api/products/1/sizes",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
@@ -598,10 +813,10 @@
           }
         },
         {
-          "name": "Add Product Ingredient",
+          "name": "Add Product Size Ingredient",
           "request": {
             "method": "POST",
-            "url": "{{base_url}}/api/products/1/sizes/1/ingredients",
+            "url": "{{baseUrl}}/api/products/1/sizes/1/ingredients",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
@@ -610,10 +825,65 @@
           }
         },
         {
+          "name": "Get Product Types",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/products/1/types"
+          }
+        },
+        {
+          "name": "Add Product Type",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/products/1/types",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Regular\"\n}" }
+          }
+        },
+        {
+          "name": "Update Product Type",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/products/1/types/1",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Premium\"\n}" }
+          }
+        },
+        {
+          "name": "Delete Product Type",
+          "request": { "method": "DELETE", "url": "{{baseUrl}}/api/products/1/types/1" }
+        },
+        {
+          "name": "Add Ingredient to Product Type",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/products/1/types/1/ingredients/1",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantity\": 0.03\n}"
+            }
+          }
+        },
+        {
+          "name": "Remove Ingredient from Product Type",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/products/1/types/1/ingredients/1"
+          }
+        },
+        {
+          "name": "Get Product Addons",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/products/1/addons"
+          }
+        },
+        {
           "name": "Add Product Addon",
           "request": {
             "method": "POST",
-            "url": "{{base_url}}/api/products/1/addons",
+            "url": "{{baseUrl}}/api/products/1/addons",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
@@ -622,26 +892,49 @@
           }
         },
         {
-          "name": "Add Product Type",
+          "name": "Update Product Addon",
           "request": {
-            "method": "POST",
-            "url": "{{base_url}}/api/products/1/types",
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/products/1/addons/1",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Regular\"\n}" }
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Extra double shot\",\n  \"price\": 15\n}"
+            }
           }
+        },
+        {
+          "name": "Delete Product Addon",
+          "request": { "method": "DELETE", "url": "{{baseUrl}}/api/products/1/addons/1" }
         },
         {
           "name": "Update Product",
           "request": {
             "method": "PUT",
-            "url": "{{base_url}}/api/products/1",
+            "url": "{{baseUrl}}/api/products/1",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": { "mode": "raw", "raw": "{\n  \"description\": \"وصفة جديدة\"\n}" }
           }
         },
         {
           "name": "Delete Product",
-          "request": { "method": "DELETE", "url": "{{base_url}}/api/products/1" }
+          "request": { "method": "DELETE", "url": "{{baseUrl}}/api/products/1" }
+        },
+        {
+          "name": "POS Catalog (authenticated)",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/products/pos-catalog" }
+        },
+        {
+          "name": "Public Catalog",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/products/public" }
+        },
+        {
+          "name": "Public Categories",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/products/public/categories" }
+        },
+        {
+          "name": "Top Products",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/products/public/top" }
         }
       ]
     },
@@ -653,8 +946,8 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{base_url}}/api/sales?page=1&pageSize=20",
-              "host": ["{{base_url}}"],
+              "raw": "{{baseUrl}}/api/sales?page=1&pageSize=20",
+              "host": ["{{baseUrl}}"],
               "path": ["api", "sales"],
               "query": [
                 { "key": "page", "value": "1" },
@@ -664,14 +957,18 @@
           }
         },
         {
+          "name": "Sales Summary",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/sales/summary" }
+        },
+        {
           "name": "Get Sale by ID",
-          "request": { "method": "GET", "url": "{{base_url}}/api/sales/1" }
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/sales/1" }
         },
         {
           "name": "Create Sale",
           "request": {
             "method": "POST",
-            "url": "{{base_url}}/api/sales",
+            "url": "{{baseUrl}}/api/sales",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
@@ -680,8 +977,20 @@
           }
         },
         {
-          "name": "Cancel Sale (Soft Delete)",
-          "request": { "method": "DELETE", "url": "{{base_url}}/api/sales/1" }
+          "name": "Update Sale",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/sales/1",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"discount\": 0,\n  \"paymentMethod\": \"CARD\",\n  \"items\": [\n    {\n      \"productId\": 1,\n      \"productSizeId\": 1,\n      \"quantity\": 1\n    }\n  ]\n}"
+            }
+          }
+        },
+        {
+          "name": "Cancel Sale",
+          "request": { "method": "DELETE", "url": "{{baseUrl}}/api/sales/1" }
         }
       ]
     },
@@ -693,8 +1002,8 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{base_url}}/api/purchases?page=1&pageSize=20",
-              "host": ["{{base_url}}"],
+              "raw": "{{baseUrl}}/api/purchases?page=1&pageSize=20",
+              "host": ["{{baseUrl}}"],
               "path": ["api", "purchases"],
               "query": [
                 { "key": "page", "value": "1" },
@@ -705,13 +1014,13 @@
         },
         {
           "name": "Get Purchase by ID",
-          "request": { "method": "GET", "url": "{{base_url}}/api/purchases/1" }
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/purchases/1" }
         },
         {
           "name": "Create Purchase (Draft)",
           "request": {
             "method": "POST",
-            "url": "{{base_url}}/api/purchases",
+            "url": "{{baseUrl}}/api/purchases",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
@@ -720,16 +1029,28 @@
           }
         },
         {
+          "name": "Update Purchase",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/purchases/1",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"discount\": 50\n}"
+            }
+          }
+        },
+        {
           "name": "Approve Purchase",
-          "request": { "method": "PATCH", "url": "{{base_url}}/api/purchases/1/approve" }
+          "request": { "method": "PATCH", "url": "{{baseUrl}}/api/purchases/1/approve" }
         },
         {
           "name": "Cancel Purchase",
-          "request": { "method": "PATCH", "url": "{{base_url}}/api/purchases/2/cancel" }
+          "request": { "method": "PATCH", "url": "{{baseUrl}}/api/purchases/2/cancel" }
         },
         {
           "name": "Delete Purchase",
-          "request": { "method": "DELETE", "url": "{{base_url}}/api/purchases/2" }
+          "request": { "method": "DELETE", "url": "{{baseUrl}}/api/purchases/2" }
         }
       ]
     },
@@ -741,8 +1062,8 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{base_url}}/api/orders?page=1&pageSize=20",
-              "host": ["{{base_url}}"],
+              "raw": "{{baseUrl}}/api/orders?page=1&pageSize=20",
+              "host": ["{{baseUrl}}"],
               "path": ["api", "orders"],
               "query": [
                 { "key": "page", "value": "1" },
@@ -753,13 +1074,13 @@
         },
         {
           "name": "Get Order by ID",
-          "request": { "method": "GET", "url": "{{base_url}}/api/orders/1" }
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/orders/1" }
         },
         {
           "name": "Create Order (Dine In)",
           "request": {
             "method": "POST",
-            "url": "{{base_url}}/api/orders",
+            "url": "{{baseUrl}}/api/orders",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
@@ -771,7 +1092,7 @@
           "name": "Create Order (Takeaway)",
           "request": {
             "method": "POST",
-            "url": "{{base_url}}/api/orders",
+            "url": "{{baseUrl}}/api/orders",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
@@ -780,8 +1101,257 @@
           }
         },
         {
+          "name": "Get Prep Orders (Kitchen)",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/orders/prep" }
+        },
+        {
+          "name": "Get Table Summaries",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/orders/tables/summary" }
+        },
+        {
+          "name": "Get Table Details",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/orders/tables/1"
+          }
+        },
+        {
+          "name": "Create Table Order",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/orders/tables/1/orders",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderType\": \"DINE_IN\",\n  \"paymentMethod\": \"CASH\",\n  \"items\": [\n    {\n      \"productId\": 1,\n      \"productSizeId\": 1,\n      \"quantity\": 1\n    }\n  ]\n}"
+            }
+          }
+        },
+        {
+          "name": "Add Table Items",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/orders/tables/1/items",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"productId\": 2,\n      \"productSizeId\": 1,\n      \"quantity\": 1\n    }\n  ]\n}"
+            }
+          }
+        },
+        {
+          "name": "Checkout Table",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/orders/tables/1/checkout",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paymentMethod\": \"CASH\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Close Table",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/api/orders/tables/1/close",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" }
+          }
+        },
+        {
+          "name": "Get Table History",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/orders/tables/1/history"
+          }
+        },
+        {
+          "name": "Update Order Status",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/api/orders/1/status",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"PREPARING\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Record Payment",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/orders/1/payments",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 50,\n  \"paymentMethod\": \"CASH\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Cancel Order",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/orders/1/cancel",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Customer changed mind\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Get Order Invoice",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/orders/1/invoice"
+          }
+        },
+        {
+          "name": "Complete Delivery",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/orders/1/delivery/complete",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" }
+          }
+        },
+        {
+          "name": "Get Order Events",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/orders/1/events"
+          }
+        },
+        {
+          "name": "Start Preparation",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/orders/1/preparation/start",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" }
+          }
+        },
+        {
+          "name": "Mark Item Ready",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/orders/1/items/1/ready",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" }
+          }
+        },
+        {
+          "name": "Reopen Item",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/orders/1/items/1/reopen",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" }
+          }
+        },
+        {
+          "name": "Update Order Item Status",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/api/orders/1/items/1/status",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"READY\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Hand Over Order to Delegate",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/api/orders/1/hand-over-delegate",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"delegateId\": 1\n}"
+            }
+          }
+        },
+        {
+          "name": "Get Order Tracking (admin)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/orders/1/tracking"
+          }
+        },
+        {
+          "name": "Update Order",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/orders/1",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paymentMethod\": \"CARD\"\n}"
+            }
+          }
+        },
+        {
           "name": "Delete Order",
-          "request": { "method": "DELETE", "url": "{{base_url}}/api/orders/1" }
+          "request": { "method": "DELETE", "url": "{{baseUrl}}/api/orders/1" }
+        }
+      ]
+    },
+    {
+      "name": "10b - Orders (Public)",
+      "item": [
+        {
+          "name": "Create Public Order",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/orders/public",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderType\": \"TAKEAWAY\",\n  \"paymentMethod\": \"CASH\",\n  \"items\": [\n    {\n      \"productId\": 1,\n      \"productSizeId\": 1,\n      \"quantity\": 1\n    }\n  ]\n}"
+            }
+          }
+        },
+        {
+          "name": "Get Public Order Tracking",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/orders/public/{{trackingToken}}/tracking"
+          }
+        },
+        {
+          "name": "Lookup Order by Number & Phone",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/public/lookup?orderNumber=ORD-001&phone=01012345678",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "orders", "public", "lookup"],
+              "query": [
+                { "key": "orderNumber", "value": "ORD-001" },
+                { "key": "phone", "value": "01012345678" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Orders by Phone",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/public/by-phone?phone=01012345678",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "orders", "public", "by-phone"],
+              "query": [
+                { "key": "phone", "value": "01012345678" }
+              ]
+            }
+          }
         }
       ]
     },
@@ -793,8 +1363,8 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{base_url}}/api/returns?page=1&pageSize=20",
-              "host": ["{{base_url}}"],
+              "raw": "{{baseUrl}}/api/returns?page=1&pageSize=20",
+              "host": ["{{baseUrl}}"],
               "path": ["api", "returns"],
               "query": [
                 { "key": "page", "value": "1" },
@@ -805,13 +1375,13 @@
         },
         {
           "name": "Get Return by ID",
-          "request": { "method": "GET", "url": "{{base_url}}/api/returns/1" }
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/returns/1" }
         },
         {
           "name": "Create Return",
           "request": {
             "method": "POST",
-            "url": "{{base_url}}/api/returns",
+            "url": "{{baseUrl}}/api/returns",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
@@ -821,11 +1391,27 @@
         },
         {
           "name": "Approve Return",
-          "request": { "method": "PATCH", "url": "{{base_url}}/api/returns/1/approve" }
+          "request": { "method": "PATCH", "url": "{{baseUrl}}/api/returns/1/approve" }
+        },
+        {
+          "name": "Cancel Return",
+          "request": { "method": "PATCH", "url": "{{baseUrl}}/api/returns/1/cancel" }
+        },
+        {
+          "name": "Update Return",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/returns/1",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"rawMaterialId\": 1,\n      \"quantity\": 5,\n      \"unit\": \"kg\",\n      \"pricePerUnit\": 200,\n      \"totalPrice\": 1000\n    }\n  ]\n}"
+            }
+          }
         },
         {
           "name": "Delete Return",
-          "request": { "method": "DELETE", "url": "{{base_url}}/api/returns/1" }
+          "request": { "method": "DELETE", "url": "{{baseUrl}}/api/returns/1" }
         }
       ]
     },
@@ -837,8 +1423,8 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{base_url}}/api/cash-drawer-shifts?page=1&pageSize=20",
-              "host": ["{{base_url}}"],
+              "raw": "{{baseUrl}}/api/cash-drawer-shifts?page=1&pageSize=20",
+              "host": ["{{baseUrl}}"],
               "path": ["api", "cash-drawer-shifts"],
               "query": [
                 { "key": "page", "value": "1" },
@@ -849,22 +1435,49 @@
         },
         {
           "name": "Get Current Shift",
-          "request": { "method": "GET", "url": "{{base_url}}/api/cash-drawer-shifts/current" }
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/cash-drawer-shifts/current" }
+        },
+        {
+          "name": "Get Shift by ID",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/cash-drawer-shifts/1" }
+        },
+        {
+          "name": "Get Shift Transactions",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/cash-drawer-shifts/1/transactions"
+          }
+        },
+        {
+          "name": "Get Shift Reconciliation",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/cash-drawer-shifts/1/reconciliation"
+          }
         },
         {
           "name": "Open Shift",
           "request": {
             "method": "POST",
-            "url": "{{base_url}}/api/cash-drawer-shifts",
+            "url": "{{baseUrl}}/api/cash-drawer-shifts",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": { "mode": "raw", "raw": "{\n  \"openingBalance\": 500\n}" }
+          }
+        },
+        {
+          "name": "Close Shift",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/cash-drawer-shifts/1/close",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"closingBalance\": 700,\n  \"actualBalance\": 700\n}" }
           }
         },
         {
           "name": "Cash In (Collection)",
           "request": {
             "method": "POST",
-            "url": "{{base_url}}/api/cash-drawer-shifts/1/cash-in",
+            "url": "{{baseUrl}}/api/cash-drawer-shifts/1/cash-in",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": { "mode": "raw", "raw": "{\n  \"amount\": 300,\n  \"type\": \"COLLECTION\"\n}" }
           }
@@ -873,36 +1486,222 @@
           "name": "Cash Out (Expense)",
           "request": {
             "method": "POST",
-            "url": "{{base_url}}/api/cash-drawer-shifts/1/cash-out",
+            "url": "{{baseUrl}}/api/cash-drawer-shifts/1/cash-out",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": { "mode": "raw", "raw": "{\n  \"amount\": 100,\n  \"type\": \"EXPENSE\"\n}" }
-          }
-        },
-        {
-          "name": "Close Shift",
-          "request": {
-            "method": "POST",
-            "url": "{{base_url}}/api/cash-drawer-shifts/1/close",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"closingBalance\": 700,\n  \"actualBalance\": 700\n}" }
           }
         }
       ]
     },
     {
-      "name": "13 - Dashboard & Reports",
+      "name": "13 - Table Sessions",
       "item": [
         {
-          "name": "Dashboard Summary",
-          "request": { "method": "GET", "url": "{{base_url}}/api/dashboard" }
+          "name": "Open Table Session (Admin)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/table-sessions",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tableNumber\": 1,\n  \"numberOfGuests\": 4\n}"
+            }
+          }
         },
         {
-          "name": "Financial Report - Sales",
+          "name": "Get All Service Requests (Admin)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/table-sessions/service-requests/all"
+          }
+        },
+        {
+          "name": "Update Service Request (Admin)",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/api/table-sessions/service-requests/1",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"IN_PROGRESS\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Get Table Session (Customer)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/table-sessions/1",
+            "auth": {
+              "type": "apikey",
+              "apikey": [
+                { "key": "key", "value": "X-Table-Token", "type": "string" },
+                { "key": "value", "value": "{{tableToken}}", "type": "string" },
+                { "key": "in", "value": "header", "type": "string" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Table Order (Customer)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/table-sessions/1/orders",
+            "auth": {
+              "type": "apikey",
+              "apikey": [
+                { "key": "key", "value": "X-Table-Token", "type": "string" },
+                { "key": "value", "value": "{{tableToken}}", "type": "string" },
+                { "key": "in", "value": "header", "type": "string" }
+              ]
+            },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderType\": \"DINE_IN\",\n  \"items\": [\n    {\n      \"productId\": 1,\n      \"productSizeId\": 1,\n      \"quantity\": 2\n    }\n  ]\n}"
+            }
+          }
+        },
+        {
+          "name": "Get Active Order (Customer)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/table-sessions/1/active-order",
+            "auth": {
+              "type": "apikey",
+              "apikey": [
+                { "key": "key", "value": "X-Table-Token", "type": "string" },
+                { "key": "value", "value": "{{tableToken}}", "type": "string" },
+                { "key": "in", "value": "header", "type": "string" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Service Request (Customer)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/table-sessions/1/service-requests",
+            "auth": {
+              "type": "apikey",
+              "apikey": [
+                { "key": "key", "value": "X-Table-Token", "type": "string" },
+                { "key": "value", "value": "{{tableToken}}", "type": "string" },
+                { "key": "in", "value": "header", "type": "string" }
+              ]
+            },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"WAITER_CALL\",\n  \"message\": \"Need more water please\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "13b - Table Session Admin",
+      "item": [
+        {
+          "name": "List Service Requests (Admin)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/admin/service-requests"
+          }
+        },
+        {
+          "name": "Resolve Service Request (Admin)",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/api/admin/service-requests/1/resolve",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "14 - Attendance",
+      "item": [
+        {
+          "name": "Check In",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/attendance/check-in",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" }
+          }
+        },
+        {
+          "name": "Check Out",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/attendance/check-out",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "15 - Reviews",
+      "item": [
+        {
+          "name": "Create Review (Public)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/reviews",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rating\": 5,\n  \"comment\": \"Amazing coffee!\",\n  \"customerName\": \"Ahmed\",\n  \"orderNumber\": \"ORD-001\"\n}"
+            }
+          }
+        },
+        {
+          "name": "List Reviews (Admin)",
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{base_url}}/api/financial-reports/sales?from=2026-08-01&to=2026-08-31",
-              "host": ["{{base_url}}"],
+              "raw": "{{baseUrl}}/api/reviews?page=1&pageSize=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "reviews"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "pageSize", "value": "20" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Review by ID (Admin)",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/reviews/1" }
+        },
+        {
+          "name": "Delete Review (Admin)",
+          "request": { "method": "DELETE", "url": "{{baseUrl}}/api/reviews/1" }
+        }
+      ]
+    },
+    {
+      "name": "16 - Dashboard",
+      "item": [
+        {
+          "name": "Dashboard Summary",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/dashboard" }
+        }
+      ]
+    },
+    {
+      "name": "17 - Financial Reports",
+      "item": [
+        {
+          "name": "Sales Report",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/financial-reports/sales?from=2026-08-01&to=2026-08-31",
+              "host": ["{{baseUrl}}"],
               "path": ["api", "financial-reports", "sales"],
               "query": [
                 { "key": "from", "value": "2026-08-01" },
@@ -912,72 +1711,128 @@
           }
         },
         {
-          "name": "Financial Report - Profit",
-          "request": { "method": "GET", "url": "{{base_url}}/api/financial-reports/profit" }
+          "name": "Profit Report",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/financial-reports/profit" }
         },
         {
-          "name": "Financial Report - Treasury",
-          "request": { "method": "GET", "url": "{{base_url}}/api/financial-reports/treasury" }
+          "name": "Treasury Report",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/financial-reports/treasury" }
         },
         {
-          "name": "Warnings (Low Stock)",
-          "request": { "method": "GET", "url": "{{base_url}}/api/warnings" }
+          "name": "Overview Report",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/financial-reports/overview" }
+        },
+        {
+          "name": "Inventory Report",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/financial-reports/inventory" }
+        },
+        {
+          "name": "Daily Report",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/financial-reports/daily" }
+        },
+        {
+          "name": "Monthly Report",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/financial-reports/monthly" }
+        },
+        {
+          "name": "Shift Reports",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/financial-reports/shifts" }
+        },
+        {
+          "name": "Product Reports",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/financial-reports/products" }
+        },
+        {
+          "name": "Inventory Loss Report",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/financial-reports/inventory-loss" }
+        },
+        {
+          "name": "Export Report",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/financial-reports/export" }
         }
       ]
     },
     {
-      "name": "14 - Settings & Audit",
+      "name": "18 - Warnings",
+      "item": [
+        {
+          "name": "Get Warnings (Low Stock)",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/warnings" }
+        }
+      ]
+    },
+    {
+      "name": "19 - Settings",
       "item": [
         {
           "name": "List Settings",
-          "request": { "method": "GET", "url": "{{base_url}}/api/settings" }
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/settings" }
+        },
+        {
+          "name": "Get Setting by Key",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/settings/currency"
+          }
+        },
+        {
+          "name": "Update Setting by Key",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/settings/currency",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"value\": \"EGP\"\n}"
+            }
+          }
         },
         {
           "name": "Bulk Update Settings",
           "request": {
             "method": "POST",
-            "url": "{{base_url}}/api/settings/bulk",
+            "url": "{{baseUrl}}/api/settings/bulk",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"settings\": [\n    { \"key\": \"currency\", \"value\": \"EGP\" }\n  ]\n}"
-            }
-          }
-        },
-        {
-          "name": "List Audit Logs",
-          "request": {
-            "method": "GET",
-            "url": {
-              "raw": "{{base_url}}/api/audit-logs?pageSize=10",
-              "host": ["{{base_url}}"],
-              "path": ["api", "audit-logs"],
-              "query": [{ "key": "pageSize", "value": "10" }]
+              "raw": "{\n  \"settings\": [\n    { \"key\": \"currency\", \"value\": \"EGP\" },\n    { \"key\": \"taxRate\", \"value\": \"14\" }\n  ]\n}"
             }
           }
         }
       ]
     },
     {
-      "name": "15 - AI Chat (DeepSeek)",
+      "name": "20 - Audit Logs",
       "item": [
         {
-          "name": "Chat - Public (Customer)",
+          "name": "List Audit Logs",
           "request": {
-            "method": "POST",
-            "url": "{{base_url}}/api/chat",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"مرحبا، عندكم ايه من المنيو؟\"\n    }\n  ]\n}"
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/audit-logs?page=1&pageSize=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "audit-logs"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "pageSize", "value": "20" }
+              ]
             }
           }
         },
         {
-          "name": "Chat - Staff (with tools)",
+          "name": "Get Audit Log by ID",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/audit-logs/1" }
+        }
+      ]
+    },
+    {
+      "name": "21 - AI Chat",
+      "item": [
+        {
+          "name": "Chat (Staff - with auth)",
           "request": {
             "method": "POST",
-            "url": "{{base_url}}/api/chat",
+            "url": "{{baseUrl}}/api/chat",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
@@ -988,13 +1843,13 @@
       ]
     },
     {
-      "name": "16 - RBAC Tests",
+      "name": "22 - RBAC Tests",
       "item": [
         {
           "name": "Cashier → Users (should 403)",
           "request": {
             "method": "GET",
-            "url": "{{base_url}}/api/users",
+            "url": "{{baseUrl}}/api/users",
             "auth": {
               "type": "bearer",
               "bearer": [{ "key": "token", "value": "{{cashier_token}}", "type": "string" }]
@@ -1005,7 +1860,7 @@
           "name": "Cashier → Sales (should 200)",
           "request": {
             "method": "GET",
-            "url": "{{base_url}}/api/sales",
+            "url": "{{baseUrl}}/api/sales",
             "auth": {
               "type": "bearer",
               "bearer": [{ "key": "token", "value": "{{cashier_token}}", "type": "string" }]
@@ -1016,7 +1871,7 @@
           "name": "No Token → Users (should 401)",
           "request": {
             "method": "GET",
-            "url": "{{base_url}}/api/users",
+            "url": "{{baseUrl}}/api/users",
             "auth": { "type": "noauth" }
           }
         }

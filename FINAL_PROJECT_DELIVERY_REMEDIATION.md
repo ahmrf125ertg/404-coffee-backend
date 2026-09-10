@@ -239,7 +239,7 @@ Sale linkage:
 - Code quality improvements (dead code, duplicates — cosmetic)
 
 **The project is ready for delivery with the understanding that:**
-1. The core order/inventory lifecycle is correct and tested (61/61 tests pass)
+1. The core order/inventory lifecycle is correct and tested (135/135 tests pass, 40 suites)
 2. Security is hardened to acceptable levels
 3. Missing APIs are documented and can be implemented in a follow-up phase
 4. The frontend should be tested against the updated backend

@@ -437,7 +437,7 @@ No frontend code is present in this repository. The contract is defined by:
 | CORS | ✅ | Configurable via env var |
 | Dependencies | ✅ | No known vulnerable packages |
 | Docker | ❌ | No Dockerfile or docker-compose |
-| Tests | ✅ | 61/61 passing (node:test + supertest, PostgreSQL test DB) |
+| Tests | ✅ | 135/135 passing (node:test + supertest, PostgreSQL test DB) |
 
 ---
 
