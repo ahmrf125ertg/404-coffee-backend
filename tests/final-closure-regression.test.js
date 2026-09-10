@@ -465,3 +465,70 @@ describe("L1 — User list search", () => {
     assert.equal(res.body.data.length, 3);
   });
 });
+
+// ============================================================
+// H5: Delegate hand-over validation order
+// ============================================================
+describe("H5 — Delegate hand-over validation order (fulfillmentType before status)", () => {
+  let pid, sizeId;
+
+  beforeEach(async () => {
+    await resetDb();
+    await seedOwner();
+    token = await loginToken("Admin");
+    const { product, size } = await createProductWithSize();
+    pid = product.id;
+    sizeId = size.id;
+
+    // Create a delegate
+    await prisma.delegate.create({
+      data: { name: "Delegate One", phone: "01011111111", whatsapp: "01011111111" },
+    });
+  });
+
+  test("READY PICKUP order gets fulfillmentType error, not status error", async () => {
+    // Create a PICKUP order
+    const createRes = await request(app)
+      .post("/api/orders")
+      .set(bearer(token))
+      .send({
+        channel: "ADMIN_POS",
+        fulfillmentType: "PICKUP",
+        customerName: "Handover Test",
+        phone: "01012345678",
+        items: [{ productId: pid, productSizeId: sizeId, quantity: 1 }],
+      });
+    assert.equal(createRes.status, 201);
+    const orderId = createRes.body.data.id;
+
+    // Transition to READY (PENDING→CONFIRMED→PREPARING→READY)
+    for (const status of ["CONFIRMED", "PREPARING", "READY"]) {
+      await request(app)
+        .patch(`/api/orders/${orderId}/status`)
+        .set(bearer(token))
+        .send({ status });
+    }
+
+    // Verify it is READY
+    const orderRes = await request(app)
+      .get(`/api/orders/${orderId}`)
+      .set(bearer(token));
+    assert.equal(orderRes.body.data.status, "READY");
+
+    // Now try to hand over — should fail because it's PICKUP, not DELIVERY
+    const handoverRes = await request(app)
+      .patch(`/api/orders/${orderId}/hand-over-delegate`)
+      .set(bearer(token))
+      .send({ delegateId: 1 });
+
+    assert.equal(handoverRes.status, 409);
+    assert.ok(
+      handoverRes.body.message.includes("DELIVERY"),
+      `Error should mention DELIVERY, got: "${handoverRes.body.message}"`
+    );
+    assert.ok(
+      !handoverRes.body.message.includes("READY"),
+      `Error should NOT mention READY status for a PICKUP order, got: "${handoverRes.body.message}"`
+    );
+  });
+});

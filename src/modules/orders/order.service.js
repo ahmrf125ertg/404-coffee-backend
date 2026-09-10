@@ -1289,14 +1289,14 @@ const handOverOrderToDelegate = async (orderId, delegateId, userId) => {
         throw httpError("Order not found", 404);
     }
 
+    // Validate: order must be DELIVERY type (most fundamental eligibility check)
+    if (existingOrder.fulfillmentType !== "DELIVERY") {
+        throw httpError("Only DELIVERY orders can be assigned to delegates", 409);
+    }
+
     // Validate: order must be READY
     if (existingOrder.status !== "READY") {
         throw httpError("Order must be READY before assigning to delegate", 409);
-    }
-
-    // Validate: order must be DELIVERY type
-    if (existingOrder.fulfillmentType !== "DELIVERY") {
-        throw httpError("Only DELIVERY orders can be assigned to delegates", 409);
     }
 
     // Validate: order must not already have a delegate
