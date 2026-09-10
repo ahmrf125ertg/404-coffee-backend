@@ -2073,7 +2073,8 @@ const getOrdersByPhone = async (phone) => {
 
 const recordPayment = async (orderId, data, userId) => {
     const orderIdNum = Number(orderId);
-    const { method, amount, reference } = data;
+    const { paymentMethod, amount, reference } = data;
+    const method = paymentMethod || data.method;
 
     if (!Number.isInteger(orderIdNum) || orderIdNum <= 0) throw httpError("Invalid order ID");
     if (!method || !["CASH", "CARD", "WALLET"].includes(method)) throw httpError("Invalid payment method");

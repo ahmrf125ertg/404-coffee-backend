@@ -586,7 +586,7 @@ describe("Orders Rebuild — Payment Recording", () => {
     const res = await request(app)
       .post(`/api/orders/${id}/payments`)
       .set(bearer(token))
-      .send({ method: "CASH", amount: 70 });
+      .send({ paymentMethod: "CASH", amount: 70 });
     assert.equal(res.status, 200);
     assert.equal(res.body.data.status, "PAID");
   });
@@ -607,7 +607,7 @@ describe("Orders Rebuild — Payment Recording", () => {
     const res = await request(app)
       .post(`/api/orders/${id}/payments`)
       .set(bearer(token))
-      .send({ method: "INVALID", amount: 35 });
+      .send({ paymentMethod: "INVALID", amount: 35 });
     assert.equal(res.status, 400);
   });
 });
