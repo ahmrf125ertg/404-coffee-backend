@@ -63,6 +63,16 @@ async function start() {
   server.listen(port, () => {
     logger.info(`404 Coffee API running on http://localhost:${port}`);
   });
+
+  // Periodic cleanup of expired idempotency records (every hour)
+  try {
+    const { cleanupExpiredIdempotency } = require("./modules/orders/order.idempotency");
+    await cleanupExpiredIdempotency();
+    setInterval(() => cleanupExpiredIdempotency(), 60 * 60 * 1000);
+    logger.info("Idempotency cleanup scheduled (every hour)");
+  } catch (err) {
+    logger.warn({ err: err.message }, "Failed to start idempotency cleanup");
+  }
 }
 
 start();
