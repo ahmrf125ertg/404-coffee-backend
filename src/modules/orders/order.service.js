@@ -1151,10 +1151,10 @@ const deductInventoryForOrder = async (tx, orderId) => {
 };
 
 // ============================================================
-// Hand over order to delegate
+// Hand over order to delegate (with proper validation)
 // ============================================================
 
-const handOverOrderToDelegate = async (orderId, delegateId) => {
+const handOverOrderToDelegate = async (orderId, delegateId, userId) => {
     const orderIdNum = Number(orderId);
 
     if (!Number.isInteger(orderIdNum) || orderIdNum <= 0) {
@@ -1169,22 +1169,61 @@ const handOverOrderToDelegate = async (orderId, delegateId) => {
         throw httpError("Order not found", 404);
     }
 
-    if (delegateId !== null && delegateId !== undefined) {
-        const delegate = await prisma.delegate.findUnique({
-            where: { id: Number(delegateId) },
-        });
-        if (!delegate) {
-            throw httpError("Delegate not found", 404);
-        }
+    // Validate: order must be READY
+    if (existingOrder.status !== "READY") {
+        throw httpError("Order must be READY before assigning to delegate", 409);
     }
 
-    const order = await prisma.order.update({
-        where: { id: orderIdNum },
-        data: { delegateId: delegateId ? Number(delegateId) : null },
-        include: getOrderInclude,
+    // Validate: order must be DELIVERY type
+    if (existingOrder.fulfillmentType !== "DELIVERY") {
+        throw httpError("Only DELIVERY orders can be assigned to delegates", 409);
+    }
+
+    // Validate: order must not already have a delegate
+    if (existingOrder.delegateId) {
+        throw httpError("Order is already assigned to a delegate", 409);
+    }
+
+    // Validate delegate exists
+    if (!delegateId) {
+        throw httpError("delegateId is required");
+    }
+
+    const delegate = await prisma.delegate.findUnique({
+        where: { id: Number(delegateId) },
+    });
+    if (!delegate) {
+        throw httpError("Delegate not found", 404);
+    }
+
+    // Transition to ASSIGNED_TO_DELEGATE
+    const result = await prisma.$transaction(async (tx) => {
+        const order = await tx.order.update({
+            where: { id: orderIdNum },
+            data: {
+                delegateId: Number(delegateId),
+                status: "ASSIGNED_TO_DELEGATE",
+                version: { increment: 1 },
+            },
+            include: getOrderInclude,
+        });
+
+        // Record status event
+        await tx.orderEvent.create({
+            data: {
+                orderId: orderIdNum,
+                type: "STATUS_CHANGE",
+                fromStatus: "READY",
+                toStatus: "ASSIGNED_TO_DELEGATE",
+                notes: `Assigned to delegate ${delegate.name}`,
+                userId: userId || null,
+            },
+        });
+
+        return order;
     });
 
-    return order;
+    return result;
 };
 
 // ============================================================
@@ -1868,8 +1907,11 @@ const completeDelivery = async (orderId, data = {}, userId) => {
     if (existing.status === "COMPLETED" || existing.status === "CANCELLED") {
         throw httpError("Order is already completed or cancelled");
     }
-    if (existing.status !== "READY") {
-        throw httpError("Order must be READY before completing delivery");
+
+    // Allow completing from DELIVERED, ASSIGNED_TO_DELEGATE, OUT_FOR_DELIVERY, or READY (legacy)
+    const completableStatuses = ["READY", "ASSIGNED_TO_DELEGATE", "OUT_FOR_DELIVERY", "DELIVERED"];
+    if (!completableStatuses.includes(existing.status)) {
+        throw httpError(`Order must be in one of [${completableStatuses.join(", ")}] status to complete delivery. Current: ${existing.status}`, 409);
     }
 
     const result = await prisma.$transaction(async (tx) => {
@@ -1877,16 +1919,27 @@ const completeDelivery = async (orderId, data = {}, userId) => {
             where: { id: orderIdNum },
             data: {
                 status: "COMPLETED",
-                deliveredAt: new Date(),
+                deliveredAt: existing.deliveredAt || new Date(),
+                paymentStatus: "PAID",
                 version: { increment: 1 },
                 notes: notes || existing.notes,
             },
             include: getOrderInclude,
         });
 
+        // Record status event
+        await tx.orderEvent.create({
+            data: {
+                orderId: orderIdNum,
+                type: "STATUS_CHANGE",
+                fromStatus: existing.status,
+                toStatus: "COMPLETED",
+                notes: "Delivery completed",
+                userId: userId || null,
+            },
+        });
+
         // Create sale + drawer transaction (shared helper)
-        // NOTE: Inventory was already deducted at PENDING→PREPARING transition.
-        // Do NOT deduct again here.
         const { sale, drawerTransaction } = await createOrderCompletionSale(tx, order, userId);
 
         // Link sale to order

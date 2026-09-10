@@ -270,7 +270,8 @@ const handOverOrderToDelegate = async (req, res, next) => {
     try {
         const order = await orderService.handOverOrderToDelegate(
             req.params.id,
-            req.body.delegateId
+            req.body.delegateId,
+            req.user?.userId
         );
 
         emitOrderUpdated(order);
@@ -279,7 +280,12 @@ const handOverOrderToDelegate = async (req, res, next) => {
         return res.status(200).json({
             success: true,
             message: "Order handed over to delegate",
-            data: order,
+            data: {
+                orderId: order.id,
+                status: order.status,
+                delegate: order.delegate,
+                assignedAt: order.updatedAt,
+            },
         });
     } catch (error) {
         next(error);
