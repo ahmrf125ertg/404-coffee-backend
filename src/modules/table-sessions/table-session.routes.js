@@ -6,16 +6,34 @@ const router = express.Router();
 
 router.use(authMiddleware);
 
-// GET /api/table-sessions/:tableNumber/active-order
+// Open table session
+router.post(
+    "/",
+    tableSessionController.openSession
+);
+
+// Get table session
+router.get(
+    "/:tableNumber",
+    tableSessionController.getSession
+);
+
+// Get active order for table
 router.get(
     "/:tableNumber/active-order",
     tableSessionController.getActiveOrder
 );
 
-// POST /api/table-sessions/:tableNumber/service-requests
+// Create service request for table
 router.post(
     "/:tableNumber/service-requests",
     tableSessionController.createServiceRequest
+);
+
+// Update service request (ACKNOWLEDGED/RESOLVED/CANCELLED)
+router.patch(
+    "/service-requests/:id",
+    tableSessionController.updateServiceRequest
 );
 
 module.exports = router;

@@ -760,6 +760,7 @@ enum ServiceRequestType {
 
 enum ServiceRequestStatus {
   PENDING
+  ACKNOWLEDGED
   RESOLVED
   CANCELLED
 }

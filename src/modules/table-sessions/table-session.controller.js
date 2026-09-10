@@ -1,7 +1,7 @@
 const tableSessionService = require("./table-session.service");
 const orderService = require("../orders/order.service");
 const { logAudit } = require("../../utils/audit");
-const { emitServiceRequestCreated, emitServiceRequestUpdated } = require("../../websocket/socket.events");
+const { emitServiceRequestCreated, emitServiceRequestUpdated, emitTableSessionUpdated } = require("../../websocket/socket.events");
 
 // ============================================================
 // GET /api/table-sessions/:tableNumber/active-order
@@ -14,6 +14,37 @@ const getActiveOrder = async (req, res, next) => {
     } catch (error) {
         next(error);
     }
+};
+
+// ============================================================
+// POST /api/table-sessions (open session)
+// ============================================================
+
+const openSession = async (req, res, next) => {
+    try {
+        const session = await tableSessionService.openTableSession(req.body);
+        emitTableSessionUpdated(session);
+        await logAudit(req, "orders", "create_session", `Table ${req.body.tableNumber} session opened`);
+        return res.status(201).json({
+            success: true,
+            message: "Table session opened",
+            data: session,
+        });
+    } catch (error) { next(error); }
+};
+
+// ============================================================
+// GET /api/table-sessions/:tableNumber (get session)
+// ============================================================
+
+const getSession = async (req, res, next) => {
+    try {
+        const session = await tableSessionService.getTableSession(req.params.tableNumber);
+        if (!session) {
+            return res.status(404).json({ success: false, message: "No active session for this table" });
+        }
+        return res.status(200).json({ success: true, data: session });
+    } catch (error) { next(error); }
 };
 
 // ============================================================
@@ -46,7 +77,7 @@ const createServiceRequest = async (req, res, next) => {
 };
 
 // ============================================================
-// GET /api/admin/service-requests
+// GET /api/table-sessions/service-requests/all
 // ============================================================
 
 const getServiceRequests = async (req, res, next) => {
@@ -59,7 +90,34 @@ const getServiceRequests = async (req, res, next) => {
 };
 
 // ============================================================
-// PATCH /api/admin/service-requests/:id/resolve
+// PATCH /api/table-sessions/service-requests/:id
+// ============================================================
+
+const updateServiceRequest = async (req, res, next) => {
+    try {
+        const { status, reason } = req.body;
+        const updated = await tableSessionService.updateServiceRequest(
+            req.params.id,
+            { status, reason },
+            req.user?.userId
+        );
+
+        await logAudit(req, "orders", "update_service_request", `Service request ${req.params.id} updated to ${status}`);
+
+        emitServiceRequestUpdated(updated);
+
+        return res.status(200).json({
+            success: true,
+            message: "Service request updated",
+            data: updated,
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// ============================================================
+// PATCH /api/admin/service-requests/:id/resolve (legacy)
 // ============================================================
 
 const resolveServiceRequest = async (req, res, next) => {
@@ -85,7 +143,10 @@ const resolveServiceRequest = async (req, res, next) => {
 
 module.exports = {
     getActiveOrder,
+    openSession,
+    getSession,
     createServiceRequest,
     getServiceRequests,
+    updateServiceRequest,
     resolveServiceRequest,
 };
