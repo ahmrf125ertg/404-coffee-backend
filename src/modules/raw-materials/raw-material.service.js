@@ -16,9 +16,19 @@ const { parsePagination } = require("../../utils/pagination");
 
 const getRawMaterials = async (reqQuery = {}) => {
     const { page, pageSize, skip, take } = parsePagination(reqQuery);
+    const { search } = reqQuery;
+
+    const where = {};
+    if (search && search.trim()) {
+        where.OR = [
+            { name: { contains: search.trim(), mode: "insensitive" } },
+            { unit: { contains: search.trim(), mode: "insensitive" } },
+        ];
+    }
 
     const [rawMaterials, total] = await Promise.all([
         prisma.rawMaterial.findMany({
+            where,
             orderBy: {
                 createdAt: "desc",
             },
@@ -34,7 +44,7 @@ const getRawMaterials = async (reqQuery = {}) => {
             skip,
             take,
         }),
-        prisma.rawMaterial.count(),
+        prisma.rawMaterial.count({ where }),
     ]);
 
     return {
@@ -551,6 +561,29 @@ const updateBatchesPriority = async (rawMaterialId, batches) => {
         throw error;
     }
 
+    // Validate all batch IDs belong to this material
+    const batchIds = batches.map((b) => b.batchId);
+    const existingBatches = await prisma.rawMaterialBatch.findMany({
+        where: { rawMaterialId: Number(rawMaterialId) },
+        select: { id: true },
+    });
+    const existingIds = new Set(existingBatches.map((b) => b.id));
+    const submittedIds = new Set(batchIds);
+
+    if (existingBatches.length !== batchIds.length) {
+        const error = new Error("يجب إرسال جميع دفعات المادة");
+        error.statusCode = 400;
+        throw error;
+    }
+
+    for (const id of batchIds) {
+        if (!existingIds.has(id)) {
+            const error = new Error(`Batch ${id} does not belong to this material`);
+            error.statusCode = 400;
+            throw error;
+        }
+    }
+
     // Validate no duplicate priorities
     const priorities = batches.map((b) => b.withdrawalPriority);
     const uniquePriorities = new Set(priorities);
@@ -560,15 +593,14 @@ const updateBatchesPriority = async (rawMaterialId, batches) => {
         throw error;
     }
 
-    // Validate all batch IDs belong to this material
-    const batchIds = batches.map((b) => b.batchId);
-    const existingBatches = await prisma.rawMaterialBatch.findMany({
-        where: { id: { in: batchIds }, rawMaterialId: Number(rawMaterialId) },
-    });
-    if (existingBatches.length !== batchIds.length) {
-        const error = new Error("One or more batch IDs are invalid");
-        error.statusCode = 400;
-        throw error;
+    // Validate priorities are consecutive integers starting from 1
+    const sortedPriorities = [...priorities].sort((a, b) => a - b);
+    for (let i = 0; i < sortedPriorities.length; i++) {
+        if (sortedPriorities[i] !== i + 1) {
+            const error = new Error("الأولويات يجب أن تكون أعداد صحيحة متتابعة تبدأ من 1");
+            error.statusCode = 400;
+            throw error;
+        }
     }
 
     // Update priorities in a transaction

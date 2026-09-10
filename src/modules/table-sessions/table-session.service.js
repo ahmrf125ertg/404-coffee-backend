@@ -25,7 +25,7 @@ const createServiceRequest = async ({ tableNumber, type = "WAITER", reason }) =>
         where: {
             tableNumber: tn,
             type,
-            status: { in: ["PENDING", "ACKNOWLEDGED"] },
+            status: { in: ["OPEN", "PENDING", "ACKNOWLEDGED"] },
             createdAt: { gte: new Date(Date.now() - 2 * 60 * 1000) },
         },
     });
@@ -59,7 +59,7 @@ const getServiceRequests = async (filters = {}) => {
     }
 
     if (filters.scope === "active") {
-        where.status = { in: ["PENDING", "ACKNOWLEDGED"] };
+        where.status = { in: ["OPEN", "PENDING", "ACKNOWLEDGED"] };
     } else if (filters.scope === "history") {
         where.status = { in: ["RESOLVED", "CANCELLED"] };
     }

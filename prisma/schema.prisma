@@ -762,6 +762,7 @@ enum ServiceRequestType {
 }
 
 enum ServiceRequestStatus {
+  OPEN
   PENDING
   ACKNOWLEDGED
   RESOLVED
@@ -778,7 +779,7 @@ model ServiceRequest {
   tableNumber      Int
   type             ServiceRequestType   @default(WAITER)
   reason           String?
-  status           ServiceRequestStatus @default(PENDING)
+  status           ServiceRequestStatus @default(OPEN)
   resolvedByUserId Int?
   resolvedAt       DateTime?
   createdAt        DateTime             @default(now())

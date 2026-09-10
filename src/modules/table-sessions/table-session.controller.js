@@ -1,7 +1,45 @@
 const tableSessionService = require("./table-session.service");
 const orderService = require("../orders/order.service");
 const { logAudit } = require("../../utils/audit");
-const { emitServiceRequestCreated, emitServiceRequestUpdated, emitTableSessionUpdated } = require("../../websocket/socket.events");
+const { emitServiceRequestCreated, emitServiceRequestUpdated, emitTableSessionUpdated, emitOrderCreated } = require("../../websocket/socket.events");
+
+// ============================================================
+// POST /api/table-sessions/:tableNumber/orders
+// Create order from table customer (uses X-Table-Token)
+// ============================================================
+
+const createTableOrder = async (req, res, next) => {
+    try {
+        const { tableNumber } = req.params;
+        const session = req.tableSession;
+
+        const order = await orderService.createOrder({
+            channel: "TABLE_CUSTOMER",
+            fulfillmentType: "DINE_IN",
+            table: String(tableNumber),
+            items: req.body.items,
+        });
+
+        emitOrderCreated(order);
+        await logAudit(req, "orders", "create_order", `Table order created for table ${tableNumber}`);
+
+        return res.status(201).json({
+            success: true,
+            message: "تم إرسال طلبك للجرسون",
+            data: {
+                id: order.id,
+                orderNumber: order.orderNumber,
+                tableNumber: Number(tableNumber),
+                status: order.status,
+                total: Number(order.total),
+                trackingToken: order.trackingToken,
+                createdAt: order.createdAt,
+            },
+        });
+    } catch (error) {
+        next(error);
+    }
+};
 
 // ============================================================
 // GET /api/table-sessions/:tableNumber/active-order
@@ -145,6 +183,7 @@ module.exports = {
     getActiveOrder,
     openSession,
     getSession,
+    createTableOrder,
     createServiceRequest,
     getServiceRequests,
     updateServiceRequest,

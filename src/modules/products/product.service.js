@@ -53,7 +53,7 @@ const computeAverageUnitCost = async (rawMaterialId) => {
     },
   });
 
-  if (batches.length === 0) return 0;
+  if (batches.length === 0) return { avgCost: 0, hasStock: false };
 
   let totalQuantity = 0;
   let totalValue = 0;
@@ -63,14 +63,14 @@ const computeAverageUnitCost = async (rawMaterialId) => {
     totalValue += qty * Number(b.pricePerUnit);
   }
 
-  return totalQuantity > 0 ? totalValue / totalQuantity : 0;
+  return { avgCost: totalQuantity > 0 ? totalValue / totalQuantity : 0, hasStock: totalQuantity > 0 };
 };
 
 // ============================================================
 // Compute cost fields for a product (types, sizes, addons)
 // ============================================================
 
-const computeProductCosts = async (product) => {
+const computeProductCosts = async (product, validateStock = false) => {
   const typesMap = new Map();
   for (const t of product.types || []) {
     if (!typesMap.has(t.id)) {
@@ -106,7 +106,12 @@ const computeProductCosts = async (product) => {
     }
     const sizeObj = sizesMap.get(s.id);
     for (const ing of s.ingredients || []) {
-      const avgCost = await computeAverageUnitCost(ing.rawMaterialId);
+      const { avgCost, hasStock } = await computeAverageUnitCost(ing.rawMaterialId);
+      if (validateStock && !hasStock) {
+        const error = new Error(`لا يمكن حساب التكلفة لعدم وجود مخزون للخامة: ${ing.rawMaterial?.name || ing.rawMaterialId}`);
+        error.statusCode = 422;
+        throw error;
+      }
       const qty = Number(ing.quantity);
       const cost = qty * avgCost;
       sizeObj.costPrice += cost;
@@ -1329,7 +1334,7 @@ const createProductConfiguration = async (configJson, imageFile) => {
     },
   });
 
-  const costResult = await computeProductCosts(fullProduct);
+  const costResult = await computeProductCosts(fullProduct, true);
 
   return {
     id: result.id,
@@ -1365,13 +1370,10 @@ const updateProductConfiguration = async (productId, configJson, imageFile) => {
     fs.mkdirSync(UPLOADS_DIR, { recursive: true });
     fs.copyFileSync(imageFile.path, dest);
     imagePath = `/uploads/products/${filename}`;
-    if (existing.image) {
-      const oldPath = path.join(__dirname, "../..", existing.image);
-      if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
-    }
   }
 
-  await prisma.$transaction(async (tx) => {
+  try {
+    await prisma.$transaction(async (tx) => {
     await tx.product.update({
       where: { id: pId },
       data: {
@@ -1503,6 +1505,12 @@ const updateProductConfiguration = async (productId, configJson, imageFile) => {
     }
   });
 
+  // Delete old image after successful transaction
+  if (imageFile && existing.image) {
+    const oldPath = path.join(__dirname, "../..", existing.image);
+    if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+  }
+
   const fullProduct = await prisma.product.findUnique({
     where: { id: pId },
     include: {
@@ -1512,7 +1520,7 @@ const updateProductConfiguration = async (productId, configJson, imageFile) => {
     },
   });
 
-  const costResult = await computeProductCosts(fullProduct);
+  const costResult = await computeProductCosts(fullProduct, true);
 
   return {
     id: pId,
@@ -1526,6 +1534,14 @@ const updateProductConfiguration = async (productId, configJson, imageFile) => {
       profitMargin: s.profitMargin,
     })),
   };
+  } catch (txError) {
+    // Cleanup new image on failure
+    if (imageFile && imagePath) {
+      const newPath = path.join(__dirname, "../..", imagePath);
+      if (fs.existsSync(newPath)) fs.unlinkSync(newPath);
+    }
+    throw txError;
+  }
 };
 
 module.exports = {

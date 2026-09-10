@@ -3,19 +3,31 @@ const { parsePagination } = require("../../utils/pagination");
 
 // Get all suppliers
 const getSuppliers = async (reqQuery = {}) => {
-    const { skip, take } = parsePagination(reqQuery);
+    const { skip, take, page, pageSize } = parsePagination(reqQuery);
+    const { search } = reqQuery;
+
+    const where = {};
+    if (search && search.trim()) {
+        where.OR = [
+            { name: { contains: search.trim(), mode: "insensitive" } },
+            { contactPerson: { contains: search.trim(), mode: "insensitive" } },
+            { phone: { contains: search.trim(), mode: "insensitive" } },
+            { city: { contains: search.trim(), mode: "insensitive" } },
+        ];
+    }
 
     const [items, total] = await Promise.all([
         prisma.supplier.findMany({
+            where,
             orderBy: {
                 createdAt: "desc",
             },
             skip,
             take,
         }),
-        prisma.supplier.count(),
+        prisma.supplier.count({ where }),
     ]);
-    return { items, total };
+    return { items, total, page, pageSize };
 };
 
 
@@ -250,7 +262,7 @@ const getSupplierTransactions = async (supplierId, filters = {}) => {
     if (!Number.isInteger(id) || id <= 0) { const error = new Error("Invalid supplier ID"); error.statusCode = 400; throw error; }
     const supplier = await prisma.supplier.findUnique({ where: { id } });
     if (!supplier) { const error = new Error("Supplier not found"); error.statusCode = 404; throw error; }
-    const { skip, take } = parsePagination(filters);
+    const { skip, take, page, pageSize } = parsePagination(filters);
 
     const txWhere = { supplierId: id };
     if (filters.from) {
@@ -259,28 +271,33 @@ const getSupplierTransactions = async (supplierId, filters = {}) => {
     if (filters.to) {
         txWhere.transactionDate = { ...txWhere.transactionDate, lte: new Date(filters.to) };
     }
-
-    let transactions = await prisma.supplierTransaction.findMany({
-        where: txWhere,
-        orderBy: { transactionDate: "desc" },
-    });
-
     if (filters.type) {
-        transactions = transactions.filter((t) => t.type === filters.type);
+        txWhere.type = filters.type;
     }
 
-    const total = transactions.length;
-    const pageTx = transactions.slice(skip, skip + take);
+    const [transactions, total, allTx] = await Promise.all([
+        prisma.supplierTransaction.findMany({
+            where: txWhere,
+            orderBy: { transactionDate: "desc" },
+            skip,
+            take,
+        }),
+        prisma.supplierTransaction.count({ where: txWhere }),
+        prisma.supplierTransaction.findMany({
+            where: { supplierId: id },
+            select: { amount: true, category: true },
+        }),
+    ]);
 
-    const totalIn = transactions
+    const totalIn = allTx
         .filter((t) => t.category === "RECEIVABLE")
         .reduce((s, t) => s + Number(t.amount), 0);
-    const totalOut = transactions
+    const totalOut = allTx
         .filter((t) => t.category === "DEBT")
         .reduce((s, t) => s + Number(t.amount), 0);
 
     const summary = { totalIn, totalOut, balance: totalOut - totalIn };
-    return { items: pageTx, total, summary };
+    return { items: transactions, total, summary, page, pageSize };
 };
 
 // Create supplier transaction

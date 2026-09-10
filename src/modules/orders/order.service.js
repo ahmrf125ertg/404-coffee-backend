@@ -398,7 +398,7 @@ const createOrder = async (data) => {
 // ============================================================
 
 const getOrders = async (filters = {}) => {
-    const { skip, take } = parsePagination(filters);
+    const { skip, take, page, pageSize } = parsePagination(filters);
 
     const {
         status,
@@ -406,6 +406,9 @@ const getOrders = async (filters = {}) => {
         paymentMethod,
         customerId,
         delegateId,
+        channel,
+        fulfillmentType,
+        scope,
     } = filters;
 
     const where = {};
@@ -422,12 +425,27 @@ const getOrders = async (filters = {}) => {
         where.paymentMethod = paymentMethod;
     }
 
+    if (channel) {
+        where.channel = channel;
+    }
+
+    if (fulfillmentType) {
+        where.fulfillmentType = fulfillmentType;
+    }
+
     if (customerId !== undefined && customerId !== "") {
         where.customerId = Number(customerId);
     }
 
     if (delegateId !== undefined && delegateId !== "") {
         where.delegateId = Number(delegateId);
+    }
+
+    // Scope filter: active = not completed/cancelled, history = completed/cancelled
+    if (scope === "active") {
+        where.status = { notIn: ["COMPLETED", "CANCELLED"] };
+    } else if (scope === "history") {
+        where.status = { in: ["COMPLETED", "CANCELLED"] };
     }
 
     const [orders, total] = await Promise.all([
@@ -446,7 +464,7 @@ const getOrders = async (filters = {}) => {
         prisma.order.count({ where }),
     ]);
 
-    return { items: orders, total };
+    return { items: orders, total, page, pageSize };
 };
 
 // ============================================================
@@ -1241,7 +1259,7 @@ const handOverOrderToDelegate = async (orderId, delegateId, userId) => {
 // Close table order
 // ============================================================
 
-const closeTableOrder = async (tableNumber, userId) => {
+const closeTableOrder = async (tableNumber, userId, paymentData = {}) => {
     if (!tableNumber) {
         throw httpError("Table number is required");
     }
@@ -1257,6 +1275,15 @@ const closeTableOrder = async (tableNumber, userId) => {
 
     if (activeOrders.length === 0) {
         throw httpError("No active orders for this table", 404);
+    }
+
+    // Cannot close if any orders are PENDING or PREPARING
+    const notReadyOrders = activeOrders.filter(o => ["PENDING", "CONFIRMED", "PREPARING"].includes(o.status));
+    if (notReadyOrders.length > 0) {
+        throw httpError(
+            `Cannot close table: ${notReadyOrders.length} order(s) are still being prepared (${notReadyOrders.map(o => o.status).join(", ")})`,
+            409
+        );
     }
 
     const result = await prisma.$transaction(async (tx) => {
@@ -1347,44 +1374,96 @@ const closeTableOrder = async (tableNumber, userId) => {
 // ============================================================
 
 const getPublicOrderTracking = async (code, token) => {
-    const where = { orderNumber: code };
-
-    if (token) {
-        where.trackingToken = token;
+    if (!token) {
+        throw httpError("Tracking token is required", 401);
     }
 
     const order = await prisma.order.findFirst({
-        where,
+        where: { orderNumber: code, trackingToken: token },
         include: {
             items: {
                 include: {
-                    product: { select: { id: true, name: true } },
+                    product: { select: { id: true, name: true, image: true } },
                     productSize: { select: { id: true, name: true, typeName: true } },
+                },
+            },
+            statusHistory: {
+                orderBy: { createdAt: "asc" },
+                select: {
+                    id: true,
+                    toStatus: true,
+                    createdAt: true,
+                    user: { select: { id: true, name: true } },
                 },
             },
         },
     });
 
     if (!order) {
-        throw httpError("Order not found", 404);
+        throw httpError("Order not found or token does not match", 404);
     }
 
+    const STATUS_TEXT = {
+        PENDING: "تم استلام طلبك",
+        CONFIRMED: "تم تأكيد طلبك",
+        PREPARING: "جاري تحضير طلبك",
+        READY: "طلبك جاهز",
+        ASSIGNED_TO_DELEGATE: "جاري التوصيل",
+        OUT_FOR_DELIVERY: "المندوب في الطريق",
+        DELIVERED: "تم التسليم",
+        COMPLETED: "تم الطلب",
+        CANCELLED: "تم إلغاء الطلب",
+    };
+
+    const TIMELINE_TITLES = {
+        PENDING: "تم استلام الطلب",
+        CONFIRMED: "تم التأكيد",
+        PREPARING: "جاري التحضير",
+        READY: "جاهز",
+        ASSIGNED_TO_DELEGATE: "تم التسليم للمندوب",
+        OUT_FOR_DELIVERY: "في الطريق",
+        DELIVERED: "تم التسليم",
+        COMPLETED: "مكتمل",
+        CANCELLED: "ملغى",
+    };
+
     return {
-        orderId: order.id,
         orderNumber: order.orderNumber,
         status: order.status,
-        orderType: order.orderType,
+        statusText: STATUS_TEXT[order.status] || order.status,
         fulfillmentType: order.fulfillmentType,
-        total: Number(order.total),
+        estimatedMinutes: order.status === "PREPARING" ? 15 : null,
         items: order.items.map((i) => ({
             id: i.id,
-            productName: i.product.name,
+            name: i.product.name,
+            image: i.product.image,
             sizeName: i.productSize.name,
             typeName: i.productSize.typeName,
             quantity: Number(i.quantity),
+            unitPrice: Number(i.unitPrice),
+            totalPrice: Number(i.totalPrice),
             status: i.status,
         })),
+        pricing: {
+            subtotal: Number(order.subtotal),
+            deliveryFee: Number(order.deliveryFee || 0),
+            serviceFee: Number(order.serviceFee || 0),
+            tax: Number(order.tax || 0),
+            discount: Number(order.discount || 0),
+            total: Number(order.total),
+        },
+        timeline: order.statusHistory.map((h) => ({
+            status: h.toStatus,
+            title: TIMELINE_TITLES[h.toStatus] || h.toStatus,
+            createdAt: h.createdAt,
+        })),
+        delegate: order.delegate ? {
+            id: order.delegate.id,
+            name: order.delegate.name,
+            phone: order.delegate.phone,
+        } : null,
         createdAt: order.createdAt,
+        updatedAt: order.updatedAt,
     };
 };
 

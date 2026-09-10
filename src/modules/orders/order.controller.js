@@ -60,18 +60,18 @@ const createOrder = async (req, res, next) => {
 
 const getOrders = async (req, res, next) => {
     try {
-        const { items, total } = await orderService.getOrders(req.query);
-
-        const { page, pageSize } = parsePagination(req.query);
+        const { items, total, page, pageSize } = await orderService.getOrders(req.query);
 
         return res.status(200).json({
             success: true,
             data: items,
-            pagination: {
+            meta: {
                 page,
                 pageSize,
                 total,
                 totalPages: Math.ceil(total / pageSize),
+                hasMore: page * pageSize < total,
+                nextCursor: page * pageSize < total ? String(page + 1) : null,
             },
         });
     } catch (error) {
