@@ -118,6 +118,22 @@ app.get("/api/health", (req, res) => {
 });
 
 // ============================================================
+// Root & top-level health (for Railway healthcheck / browser)
+// ============================================================
+app.get("/", (req, res) => {
+  res.status(200).json({
+    service: "404-coffee-backend",
+    status: "running",
+    docs: "/api/docs",
+    health: "/api/health",
+  });
+});
+
+app.get("/health", (req, res) => {
+  res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
+// ============================================================
 // Static files (uploads)
 // ============================================================
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
