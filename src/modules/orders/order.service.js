@@ -1512,7 +1512,7 @@ const getPublicOrderTracking = async (code, token) => {
                     productSize: { select: { id: true, name: true, typeName: true } },
                 },
             },
-            statusHistory: {
+            events: {
                 orderBy: { createdAt: "asc" },
                 select: {
                     id: true,
@@ -1577,7 +1577,7 @@ const getPublicOrderTracking = async (code, token) => {
             discount: Number(order.discount || 0),
             total: Number(order.total),
         },
-        timeline: order.statusHistory.map((h) => ({
+        timeline: order.events.map((h) => ({
             status: h.toStatus,
             title: TIMELINE_TITLES[h.toStatus] || h.toStatus,
             createdAt: h.createdAt,

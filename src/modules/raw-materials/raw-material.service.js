@@ -48,11 +48,14 @@ const getRawMaterials = async (reqQuery = {}) => {
     ]);
 
     return {
-        items: rawMaterials.map((m) => ({
-            ...m,
-            supplierId: m.supplierId,
-            supplier: m.supplierRel || (m.supplier ? { id: null, name: m.supplier } : null),
-        })),
+        items: rawMaterials.map((m) => {
+            const { supplierRel, ...rest } = m;
+            return {
+                ...rest,
+                supplierId: m.supplierId,
+                supplier: supplierRel || (m.supplier ? { id: null, name: m.supplier } : null),
+            };
+        }),
         total,
         page,
         pageSize,
@@ -780,7 +783,12 @@ const getRawMaterialById = async (id) => {
             },
         },
     });
-    return material;
+    if (!material) return null;
+    const { supplierRel, ...rest } = material;
+    return {
+        ...rest,
+        supplier: supplierRel || (rest.supplier ? { id: null, name: rest.supplier } : null),
+    };
 };
 
 module.exports = {
