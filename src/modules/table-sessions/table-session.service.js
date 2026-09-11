@@ -1,6 +1,6 @@
 const prisma = require("../../lib/prisma");
 
-const VALID_SERVICE_TYPES = ["WAITER", "BILL", "WATER", "UTENSILS", "CLEANING"];
+const VALID_SERVICE_TYPES = ["WAITER", "BILL", "HELP", "WATER", "UTENSILS", "CLEANING"];
 
 // ============================================================
 // Create service request
@@ -99,6 +99,7 @@ const updateServiceRequest = async (id, { status, reason }, userId) => {
     }
 
     const validTransitions = {
+        OPEN: ["PENDING", "ACKNOWLEDGED", "RESOLVED", "CANCELLED"],
         PENDING: ["ACKNOWLEDGED", "RESOLVED", "CANCELLED"],
         ACKNOWLEDGED: ["RESOLVED", "CANCELLED"],
         RESOLVED: [],

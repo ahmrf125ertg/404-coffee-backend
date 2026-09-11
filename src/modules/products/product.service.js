@@ -113,14 +113,14 @@ const computeProductCosts = async (product, validateStock = false) => {
         throw error;
       }
       const qty = Number(ing.quantity);
-      const cost = qty * avgCost;
-      sizeObj.costPrice += cost;
+      const cost = hasStock ? qty * avgCost : null;
+      if (cost !== null) sizeObj.costPrice += cost;
       sizeObj.ingredients.push({
         rawMaterialId: ing.rawMaterialId,
         name: ing.rawMaterial?.name || "",
         quantity: qty,
         unit: ing.rawMaterial?.unit || "",
-        averageUnitCost: avgCost,
+        averageUnitCost: hasStock ? avgCost : null,
         cost,
       });
     }
@@ -615,7 +615,9 @@ const updateProduct = async (id, data) => {
 
   const { name, description, image, category, isActive } = data;
 
-  return prisma.product.update({
+  const oldImage = existingProduct.image;
+
+  const updated = await prisma.product.update({
     where: { id: productId },
     data: {
       ...(name !== undefined && { name }),
@@ -626,6 +628,16 @@ const updateProduct = async (id, data) => {
     },
     include: { types: true, sizes: true, addons: true },
   });
+
+  // Delete old image file if image was replaced
+  if (image !== undefined && image !== oldImage && oldImage) {
+    try {
+      const oldPath = path.join(__dirname, "../..", oldImage);
+      if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+    } catch (_) {}
+  }
+
+  return updated;
 };
 
 // ============================================================
